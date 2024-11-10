@@ -330,6 +330,17 @@ namespace Midjourney.Infrastructure.Services
 
             return discordInstance.SubmitTaskAsync(task, async () =>
             {
+                // 判断是否为URL格式
+                var dataString = System.Text.Encoding.UTF8.GetString(dataUrl.Data);
+                if (Uri.TryCreate(dataString, UriKind.Absolute, out Uri uriResult) 
+                    && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+                {
+                    return await discordInstance.DescribeWithUrlAsync(dataString, 
+                        task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default),
+                        task.BotType);
+                }
+
+                // 原有的文件上传逻辑
                 var taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType)}";
                 var uploadResult = await discordInstance.UploadAsync(taskFileName, dataUrl);
                 if (uploadResult.Code != ReturnCode.SUCCESS)
@@ -337,7 +348,8 @@ namespace Midjourney.Infrastructure.Services
                     return Message.Of(uploadResult.Code, uploadResult.Description);
                 }
                 var finalFileName = uploadResult.Description;
-                return await discordInstance.DescribeAsync(finalFileName, task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default),
+                return await discordInstance.DescribeAsync(finalFileName, 
+                    task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default),
                     task.BotType);
             });
         }

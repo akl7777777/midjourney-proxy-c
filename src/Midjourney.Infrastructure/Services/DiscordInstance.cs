@@ -1979,5 +1979,13 @@ namespace Midjourney.Infrastructure.LoadBalancer
                 });
             }
         }
+
+        public async Task<Message> DescribeWithUrlAsync(string imageUrl, string nonce, EBotType botType)
+        {
+            var json = botType == EBotType.NIJI_JOURNEY ? _paramsMap["describeniji_link"] : _paramsMap["describe_link"];
+            string paramsStr = ReplaceInteractionParams(json, nonce)
+                .Replace("$image_url", imageUrl);
+            return await PostJsonAndCheckStatusAsync(paramsStr);
+        }
     }
 }
