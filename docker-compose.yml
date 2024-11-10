@@ -1,0 +1,28 @@
+version: '3'
+services:
+  mjopen-dev:
+    build:
+      context: .
+      dockerfile: src/Midjourney.API/Dockerfile
+    container_name: mjopen-dev
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - TZ=Asia/Shanghai
+    ports:
+      - "8086:8080"
+    volumes:
+      - .:/src                                     # 源码目录
+      - ${HOME}/.nuget:/root/.nuget               # nuget缓存
+      - ./logs:/app/logs:rw                       # 日志
+      - ./data:/app/data:rw                       # 数据
+      - ./wwwroot/attachments:/app/wwwroot/attachments:rw                # 附件
+      - ./wwwroot/ephemeral-attachments:/app/wwwroot/ephemeral-attachments:rw  # 临时附件
+      - ./appsettings.Production.json:/app/appsettings.Production.json:ro      # 配置文件
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+networks:
+  midjourney-network:
+    driver: bridge 
