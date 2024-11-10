@@ -12,6 +12,7 @@ services:
       - TZ=Asia/Shanghai
     ports:
       - "8086:8080"
+    user: root
     volumes:
       - .:/src                                     # 源码目录
       - ${HOME}/.nuget:/root/.nuget               # nuget缓存
@@ -22,7 +23,6 @@ services:
       - ./appsettings.Production.json:/app/appsettings.Production.json:ro      # 配置文件
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    user: "1000:1000"
 
 networks:
   midjourney-network:
