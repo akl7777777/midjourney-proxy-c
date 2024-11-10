@@ -39,6 +39,7 @@
 	<ItemGroup>
 		<Content Remove="Resources\ApiParams\blend.json" />
 		<Content Remove="Resources\ApiParams\describe.json" />
+		<Content Remove="Resources\ApiParams\describe_link.json" />
 		<Content Remove="Resources\ApiParams\imagine.json" />
 		<Content Remove="Resources\ApiParams\message.json" />
 		<Content Remove="Resources\ApiParams\reroll.json" />
@@ -101,6 +102,7 @@
 		<EmbeddedResource Include="Resources\ApiParams\variation.json" />
 		<EmbeddedResource Include="Resources\ApiParams\blend.json" />
 		<EmbeddedResource Include="Resources\ApiParams\describe.json" />
+		<EmbeddedResource Include="Resources\ApiParams\describe_link.json" />
 		<EmbeddedResource Include="Resources\ApiParams\imagine.json" />
 		<EmbeddedResource Include="Resources\ApiParams\message.json" />
 		<EmbeddedResource Include="Resources\mime.types" />
