@@ -22,6 +22,7 @@ services:
       - ./appsettings.Production.json:/app/appsettings.Production.json:ro      # 配置文件
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+    user: "1000:1000"
 
 networks:
   midjourney-network:
