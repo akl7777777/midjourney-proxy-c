@@ -389,26 +389,43 @@ namespace Midjourney.API.Controllers
         {
             if (string.IsNullOrWhiteSpace(describeDTO.Base64))
             {
-                return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64不能为空"));
+                return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "输入不能为空"));
             }
 
             DataUrl dataUrl;
-            try
+            // 判断是否为URL
+            if (Uri.TryCreate(describeDTO.Base64, UriKind.Absolute, out Uri uriResult) 
+                && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
             {
-                dataUrl = DataUrl.Parse(describeDTO.Base64);
+                // 如果是URL，创建包含URL的DataUrl对象
+                dataUrl = new DataUrl("text/plain", System.Text.Encoding.UTF8.GetBytes(describeDTO.Base64));
             }
-            catch
+            else
             {
-                return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64格式错误"));
+                // 如果不是URL，按原有逻辑解析base64
+                try
+                {
+                    dataUrl = DataUrl.Parse(describeDTO.Base64);
+                }
+                catch
+                {
+                    return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64格式错误"));
+                }
             }
 
             var task = NewTask(describeDTO);
-
-            task.BotType = GetBotType(describeDTO.BotType);
             task.Action = TaskAction.DESCRIBE;
 
-            string taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType)}";
-            task.Description = $"/describe {taskFileName}";
+            // 根据输入类型设置不同的描述
+            if (Uri.IsWellFormedUriString(describeDTO.Base64, UriKind.Absolute))
+            {
+                task.Description = $"/describe {describeDTO.Base64}";
+            }
+            else
+            {
+                string taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType)}";
+                task.Description = $"/describe {taskFileName}";
+            }
 
             NewTaskDoFilter(task, describeDTO.AccountFilter);
 
