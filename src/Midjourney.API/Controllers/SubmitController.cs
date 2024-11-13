@@ -650,7 +650,7 @@ namespace Midjourney.API.Controllers
         [HttpPost("modal")]
         public ActionResult<SubmitResultVO> Modal([FromBody] SubmitModalDTO actionDTO)
         {
-            if (string.IsNullOrWhiteSpace(actionDTO.TaskId) || string.IsNullOrWhiteSpace(actionDTO.Prompt))
+            if (string.IsNullOrWhiteSpace(actionDTO.TaskId))
             {
                 return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "参数错误"));
             }
