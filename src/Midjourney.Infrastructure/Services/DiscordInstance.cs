@@ -25,6 +25,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Midjourney.Infrastructure.Data;
 using Midjourney.Infrastructure.Services;
+using Midjourney.Infrastructure.Storage;
 using Midjourney.Infrastructure.Util;
 using Newtonsoft.Json.Linq;
 using Serilog;
@@ -168,7 +169,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
                                 c.SetAbsoluteExpiration(TimeSpan.FromMinutes(2));
 
                                 // 必须数据库中存在
-                                var acc = DbHelper.AccountStore.Get(_account.Id);
+                                var acc = DbHelper.Instance.AccountStore.Get(_account.Id);
                                 if (acc != null)
                                 {
                                     return acc;
@@ -418,13 +419,13 @@ namespace Midjourney.Infrastructure.LoadBalancer
                     // 当前时间转为 Unix 时间戳
                     // 今日 0 点 Unix 时间戳
                     var now = new DateTimeOffset(DateTime.Now.Date).ToUnixTimeMilliseconds();
-                    var count = (int)TaskHelper.Instance.TaskStore.Count(c => c.SubmitTime >= now && c.InstanceId == Account.ChannelId);
+                    var count = (int)DbHelper.Instance.TaskStore.Count(c => c.SubmitTime >= now && c.InstanceId == Account.ChannelId);
 
                     if (Account.DayDrawCount != count)
                     {
                         Account.DayDrawCount = count;
 
-                        DbHelper.AccountStore.Update("DayDrawCount", Account);
+                        DbHelper.Instance.AccountStore.Update("DayDrawCount", Account);
                     }
                 }
                 catch (Exception ex)
@@ -854,18 +855,19 @@ namespace Midjourney.Infrastructure.LoadBalancer
             }
         }
 
+
         /// <summary>
         /// 绘画
         /// </summary>
+        /// <param name="info"></param>
         /// <param name="prompt"></param>
         /// <param name="nonce"></param>
-        /// <param name="botType"></param>
         /// <returns></returns>
-        public async Task<Message> ImagineAsync(TaskInfo info, string prompt, string nonce, EBotType botType)
+        public async Task<Message> ImagineAsync(TaskInfo info, string prompt, string nonce)
         {
             prompt = GetPrompt(prompt, info);
 
-            var json = botType == EBotType.MID_JOURNEY ? _paramsMap["imagine"] : _paramsMap["imagineniji"];
+            var json = (info.RealBotType ?? info.BotType) == EBotType.MID_JOURNEY ? _paramsMap["imagine"] : _paramsMap["imagineniji"];
             var paramsStr = ReplaceInteractionParams(json, nonce);
 
             JObject paramsJson = JObject.Parse(paramsStr);
@@ -953,7 +955,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
             string nonce,
             TaskInfo info)
         {
-            var botType = info.BotType;
+            var botType = info.RealBotType ?? info.BotType;
 
             string guid = null;
             string channelId = null;
@@ -997,7 +999,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
         public async Task<Message> SeedAsync(string jobId, string nonce, EBotType botType)
         {
             // 私聊频道
-            var json = botType == EBotType.NIJI_JOURNEY ? _paramsMap["seedniji"] : _paramsMap["seed"];
+            var json = botType == EBotType.MID_JOURNEY ? _paramsMap["seed"] : _paramsMap["seedniji"];
             var paramsStr = json
               .Replace("$channel_id", botType == EBotType.MID_JOURNEY ? Account.PrivateChannelId : Account.NijiBotChannelId)
               .Replace("$session_id", DefaultSessionId)
@@ -1057,14 +1059,13 @@ namespace Midjourney.Infrastructure.LoadBalancer
         /// <param name="customId"></param>
         /// <param name="prompt"></param>
         /// <param name="nonce"></param>
-        /// <param name="botType"></param>
         /// <returns></returns>
-        public async Task<Message> ZoomAsync(TaskInfo info, string messageId, string customId, string prompt, string nonce, EBotType botType)
+        public async Task<Message> ZoomAsync(TaskInfo info, string messageId, string customId, string prompt, string nonce)
         {
             customId = customId.Replace("MJ::CustomZoom::", "MJ::OutpaintCustomZoomModal::");
             prompt = GetPrompt(prompt, info);
 
-            string paramsStr = ReplaceInteractionParams(_paramsMap["zoom"], nonce, botType)
+            string paramsStr = ReplaceInteractionParams(_paramsMap["zoom"], nonce, info.RealBotType ?? info.BotType)
                 .Replace("$message_id", messageId);
             //.Replace("$prompt", prompt);
 
@@ -1137,7 +1138,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
         /// <returns></returns>
         public async Task<Message> InfoAsync(string nonce, EBotType botType)
         {
-            var content = botType == EBotType.NIJI_JOURNEY ? _paramsMap["infoniji"] : _paramsMap["info"];
+            var content = botType == EBotType.MID_JOURNEY ? _paramsMap["info"] : _paramsMap["infoniji"];
 
             var paramsStr = ReplaceInteractionParams(content, nonce);
             var obj = JObject.Parse(paramsStr);
@@ -1230,12 +1231,22 @@ namespace Midjourney.Infrastructure.LoadBalancer
         /// 获取 prompt 格式化
         /// </summary>
         /// <param name="prompt"></param>
+        /// <param name="info"></param>
         /// <returns></returns>
         public string GetPrompt(string prompt, TaskInfo info)
         {
             if (string.IsNullOrWhiteSpace(prompt))
             {
                 return prompt;
+            }
+
+            // 如果开启 niji 转 mj
+            if (info.RealBotType == EBotType.MID_JOURNEY && info.BotType == EBotType.NIJI_JOURNEY)
+            {
+                if (!prompt.Contains("--niji"))
+                {
+                    prompt += " --niji";
+                }
             }
 
             // 将 2 个空格替换为 1 个空格
@@ -1433,9 +1444,8 @@ namespace Midjourney.Infrastructure.LoadBalancer
         /// <param name="customId"></param>
         /// <param name="prompt"></param>
         /// <param name="maskBase64"></param>
-        /// <param name="botType"></param>
         /// <returns></returns>
-        public async Task<Message> InpaintAsync(TaskInfo info, string customId, string prompt, string maskBase64, EBotType botType)
+        public async Task<Message> InpaintAsync(TaskInfo info, string customId, string prompt, string maskBase64)
         {
             try
             {
@@ -1547,10 +1557,11 @@ namespace Midjourney.Infrastructure.LoadBalancer
         /// <returns></returns>
         public async Task<Message> ShortenAsync(TaskInfo info, string prompt, string nonce, EBotType botType)
         {
-            var json = botType == EBotType.NIJI_JOURNEY ? _paramsMap["shortenniji"] : _paramsMap["shorten"];
+            prompt = GetPrompt(prompt, info);
+
+            var json = botType == EBotType.MID_JOURNEY || prompt.Contains("--niji") ? _paramsMap["shorten"] : _paramsMap["shortenniji"];
             var paramsStr = ReplaceInteractionParams(json, nonce);
 
-            prompt = GetPrompt(prompt, info);
 
             var obj = JObject.Parse(paramsStr);
             obj["data"]["options"][0]["value"] = prompt;
@@ -1569,7 +1580,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
         /// <returns></returns>
         public async Task<Message> BlendAsync(List<string> finalFileNames, BlendDimensions dimensions, string nonce, EBotType botType)
         {
-            var json = botType == EBotType.NIJI_JOURNEY ? _paramsMap["blendniji"] : _paramsMap["blend"];
+            var json = botType == EBotType.MID_JOURNEY || GlobalConfiguration.Setting.EnableConvertNijiToMj ? _paramsMap["blend"] : _paramsMap["blendniji"];
 
             string paramsStr = ReplaceInteractionParams(json, nonce);
             JObject paramsJson = JObject.Parse(paramsStr);
@@ -1617,28 +1628,29 @@ namespace Midjourney.Infrastructure.LoadBalancer
         {
             var str = ReplaceInteractionParams(paramsStr, nonce, guid, channelId);
 
-            if (botType == EBotType.NIJI_JOURNEY)
-            {
-                str = str.Replace("$application_id", Constants.NIJI_APPLICATION_ID);
-            }
-            else if (botType == EBotType.MID_JOURNEY)
+            if (botType == EBotType.MID_JOURNEY)
             {
                 str = str.Replace("$application_id", Constants.MJ_APPLICATION_ID);
             }
+            else if (botType == EBotType.NIJI_JOURNEY)
+            {
+                str = str.Replace("$application_id", Constants.NIJI_APPLICATION_ID);
+            }
+
 
             return str;
         }
 
         public async Task<Message> UploadAsync(string fileName, DataUrl dataUrl, bool useDiscordUpload = false)
         {
-            // 启用转为阿里链接
+            // 启用转为云链接
             if (GlobalConfiguration.Setting.EnableConvertAliyunLink && !useDiscordUpload)
             {
                 try
                 {
-                    var oss = new AliyunOssStorageService();
+                    //var oss = new AliyunOssStorageService();
 
-                    var localPath = $"attachments/{DateTime.Now:yyyyMMdd}/{Guid.NewGuid():N}/{fileName}";
+                    var localPath = $"attachments/{DateTime.Now:yyyyMMdd}/{fileName}";
 
                     var mt = MimeKit.MimeTypes.GetMimeType(Path.GetFileName(localPath));
                     if (string.IsNullOrWhiteSpace(mt))
@@ -1647,28 +1659,30 @@ namespace Midjourney.Infrastructure.LoadBalancer
                     }
 
                     var stream = new MemoryStream(dataUrl.Data);
-                    var res = oss.SaveAsync(stream, localPath, dataUrl.MimeType ?? mt);
-                    if (string.IsNullOrWhiteSpace(res?.Key))
+                    var res = StorageHelper.Instance.SaveAsync(stream, localPath, dataUrl.MimeType ?? mt);
+                    if (string.IsNullOrWhiteSpace(res?.Url))
                     {
-                        throw new Exception("上传图片到阿里云失败");
+                        throw new Exception("上传图片到加速站点失败");
                     }
 
-                    // 替换 url
-                    var customCdn = oss.Options.CustomCdn;
-                    if (string.IsNullOrWhiteSpace(customCdn))
-                    {
-                        customCdn = oss.Options.Endpoint;
-                    }
+                    //// 替换 url
+                    //var customCdn = oss.Options.CustomCdn;
+                    //if (string.IsNullOrWhiteSpace(customCdn))
+                    //{
+                    //    customCdn = oss.Options.Endpoint;
+                    //}
 
-                    var url = $"{customCdn?.Trim()?.Trim('/')}/{res.Key}";
+                    //var url = $"{customCdn?.Trim()?.Trim('/')}/{res.Key}";
+
+                    var url = res.Url;
 
                     return Message.Success(url);
                 }
                 catch (Exception e)
                 {
-                    _logger.Error(e, "上传图片到阿里云失败");
+                    _logger.Error(e, "上传图片到加速站点异常");
 
-                    return Message.Of(ReturnCode.FAILURE, "上传图片到阿里云失败");
+                    return Message.Of(ReturnCode.FAILURE, "上传图片到加速站点异常");
                 }
             }
             else
@@ -1878,7 +1892,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
 
                         Account.Enable = false;
                         Account.DisabledReason = "Http 请求没有操作权限，禁用账号";
-                        DbHelper.AccountStore.Update(Account);
+                        DbHelper.Instance.AccountStore.Update(Account);
                         ClearAccountCache(Account.Id);
 
                         return Message.Of(ReturnCode.FAILURE, "请求失败，禁用账号");
@@ -1910,10 +1924,10 @@ namespace Midjourney.Infrastructure.LoadBalancer
 
             if (botType == EBotType.MID_JOURNEY && Account.EnableMj != true)
             {
-                return Message.Success("忽略提交，未开启 mid");
+                return Message.Success("忽略提交，未开启 mj");
             }
 
-            var json = botType == EBotType.NIJI_JOURNEY ? _paramsMap["fastniji"] : _paramsMap["fast"];
+            var json = botType == EBotType.MID_JOURNEY ? _paramsMap["fast"] : _paramsMap["fastniji"];
             var paramsStr = ReplaceInteractionParams(json, nonce);
             var obj = JObject.Parse(paramsStr);
             paramsStr = obj.ToString();
@@ -1935,10 +1949,10 @@ namespace Midjourney.Infrastructure.LoadBalancer
 
             if (botType == EBotType.MID_JOURNEY && Account.EnableMj != true)
             {
-                return Message.Success("忽略提交，未开启 mid");
+                return Message.Success("忽略提交，未开启 mj");
             }
 
-            var json = botType == EBotType.NIJI_JOURNEY ? _paramsMap["relaxniji"] : _paramsMap["relax"];
+            var json = botType == EBotType.NIJI_JOURNEY ? _paramsMap["relax"] : _paramsMap["relaxniji"];
             var paramsStr = ReplaceInteractionParams(json, nonce);
             var obj = JObject.Parse(paramsStr);
             paramsStr = obj.ToString();
@@ -1974,7 +1988,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
 
                             // 标记未用完快速
                             Account.FastExhausted = false;
-                            DbHelper.AccountStore.Update("FastExhausted", Account);
+                            DbHelper.Instance.AccountStore.Update("FastExhausted", Account);
 
                             // 如果开启了自动切换到快速，则自动切换到快速
                             try

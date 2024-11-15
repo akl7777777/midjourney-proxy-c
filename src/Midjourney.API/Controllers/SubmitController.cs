@@ -137,8 +137,17 @@ namespace Midjourney.API.Controllers
             var task = NewTask(imagineDTO);
             task.Action = TaskAction.IMAGINE;
             task.Prompt = prompt;
+            task.BotType = GetBotType(imagineDTO.BotType);
 
-            string promptEn = TranslatePrompt(prompt);
+            // 转换 --niji 为 Niji Bot
+            if (GlobalConfiguration.Setting.EnableConvertNijiToNijiBot
+                && prompt.Contains("--niji")
+                && task.BotType == EBotType.MID_JOURNEY)
+            {
+                task.BotType = EBotType.NIJI_JOURNEY;
+            }
+
+            string promptEn = TranslatePrompt(prompt, task.RealBotType ?? task.BotType);
             try
             {
                 _taskService.CheckBanned(promptEn);
@@ -149,8 +158,6 @@ namespace Midjourney.API.Controllers
                     .SetProperty("promptEn", promptEn)
                     .SetProperty("bannedWord", e.Message));
             }
-
-
 
             List<DataUrl> dataUrls = new List<DataUrl>();
             try
@@ -163,7 +170,6 @@ namespace Midjourney.API.Controllers
                 return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64格式错误"));
             }
 
-            task.BotType = GetBotType(imagineDTO.BotType);
             task.PromptEn = promptEn;
             task.Description = $"/imagine {prompt}";
 
@@ -265,7 +271,7 @@ namespace Midjourney.API.Controllers
                 return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "job id 格式错误"));
             }
 
-            var model = TaskHelper.Instance.TaskStore.Where(c => c.JobId == jobId && c.Status == TaskStatus.SUCCESS).FirstOrDefault();
+            var model = DbHelper.Instance.TaskStore.Where(c => c.JobId == jobId && c.Status == TaskStatus.SUCCESS).FirstOrDefault();
             if (model != null)
             {
                 var info = SubmitResultVO.Of(ReturnCode.SUCCESS, "提交成功", model.Id)
@@ -357,6 +363,7 @@ namespace Midjourney.API.Controllers
 
             task.Action = changeDTO.Action;
             task.BotType = targetTask.BotType;
+            task.RealBotType = targetTask.RealBotType;
             task.ParentId = targetTask.Id;
             task.Prompt = targetTask.Prompt;
             task.PromptEn = targetTask.PromptEn;
@@ -461,7 +468,7 @@ namespace Midjourney.API.Controllers
             var prompt = dto.Prompt;
             task.Prompt = prompt;
 
-            var promptEn = TranslatePrompt(prompt);
+            var promptEn = TranslatePrompt(prompt, task.RealBotType ?? task.BotType);
             try
             {
                 _taskService.CheckBanned(promptEn);
@@ -559,6 +566,7 @@ namespace Midjourney.API.Controllers
             task.InstanceId = targetTask.InstanceId;
             task.ParentId = targetTask.Id;
             task.BotType = targetTask.BotType;
+            task.RealBotType = targetTask.RealBotType;
             task.SubInstanceId = targetTask.SubInstanceId;
 
             // 识别 mj action
@@ -664,7 +672,7 @@ namespace Midjourney.API.Controllers
             var prompt = actionDTO.Prompt;
             var task = targetTask;
 
-            var promptEn = TranslatePrompt(prompt);
+            var promptEn = TranslatePrompt(prompt, task.RealBotType ?? task.BotType);
             try
             {
                 _taskService.CheckBanned(promptEn);
@@ -723,6 +731,12 @@ namespace Midjourney.API.Controllers
                 IsWhite = user?.IsWhite ?? false
             };
 
+            // niji 转 mj
+            if (GlobalConfiguration.Setting.EnableConvertNijiToMj)
+            {
+                task.RealBotType = EBotType.MID_JOURNEY;
+            }
+
             var now = new DateTimeOffset(DateTime.Now.Date).ToUnixTimeMilliseconds();
 
             // 计算当前 ip 当日第几次绘图
@@ -734,7 +748,7 @@ namespace Midjourney.API.Controllers
                 {
                     if (GlobalConfiguration.Setting.GuestDefaultDayLimit > 0)
                     {
-                        var ipTodayDrawCount = (int)TaskHelper.Instance.TaskStore.Count(x => x.SubmitTime >= now && x.ClientIp == _ip);
+                        var ipTodayDrawCount = (int)DbHelper.Instance.TaskStore.Count(x => x.SubmitTime >= now && x.ClientIp == _ip);
                         if (ipTodayDrawCount > GlobalConfiguration.Setting.GuestDefaultDayLimit)
                         {
                             throw new LogicException("今日绘图次数已达上限");
@@ -816,7 +830,7 @@ namespace Midjourney.API.Controllers
             {
                 if (user.DayDrawLimit > 0)
                 {
-                    var userTodayDrawCount = (int)TaskHelper.Instance.TaskStore.Count(x => x.SubmitTime >= now && x.UserId == user.Id);
+                    var userTodayDrawCount = (int)DbHelper.Instance.TaskStore.Count(x => x.SubmitTime >= now && x.UserId == user.Id);
                     if (userTodayDrawCount > user.DayDrawLimit)
                     {
                         throw new LogicException("今日绘图次数已达上限");
@@ -863,10 +877,28 @@ namespace Midjourney.API.Controllers
         /// 翻译提示词
         /// </summary>
         /// <param name="prompt">提示词</param>
+        /// <param name="botType"></param>
         /// <returns>翻译后的提示词</returns>
-        private string TranslatePrompt(string prompt)
+        private string TranslatePrompt(string prompt, EBotType botType)
         {
+            var setting = GlobalConfiguration.Setting;
+
             if (_properties.TranslateWay == TranslateWay.NULL || string.IsNullOrWhiteSpace(prompt) || !_translateService.ContainsChinese(prompt))
+            {
+                return prompt;
+            }
+
+            // 未开启 mj 翻译
+            if (botType == EBotType.MID_JOURNEY && !setting.EnableMjTranslate)
+            {
+                return prompt;
+            }
+            // 未开启 niji 翻译
+            else if (botType == EBotType.NIJI_JOURNEY && !setting.EnableNijiTranslate)
+            {
+                return prompt;
+            }
+            else if (botType == EBotType.INSIGHT_FACE)
             {
                 return prompt;
             }

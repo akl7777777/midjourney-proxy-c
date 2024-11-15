@@ -33,6 +33,9 @@ namespace Midjourney.Infrastructure.Models
     /// <summary>
     /// Discord账号类。
     /// </summary>
+    [BsonCollection("account")]
+    [MongoDB.Bson.Serialization.Attributes.BsonIgnoreExtraElements]
+    [Serializable]
     public class DiscordAccount : DomainObject
     {
         public DiscordAccount()
@@ -141,6 +144,16 @@ namespace Midjourney.Infrastructure.Models
         public string CfUrl { get; set; }
 
         /// <summary>
+        /// 是否赞助者
+        /// </summary>
+        public bool IsSponsor { get; set; }
+
+        /// <summary>
+        /// 赞助者用户 ID
+        /// </summary>
+        public string SponsorUserId { get; set; }
+
+        /// <summary>
         /// 并发数。
         /// </summary>
         [Display(Name = "并发数")]
@@ -225,11 +238,16 @@ namespace Midjourney.Infrastructure.Models
         {
             get
             {
+                // 如果工作时间段和摸鱼时间段都为空
                 if (string.IsNullOrWhiteSpace(WorkTime) && string.IsNullOrWhiteSpace(FishingTime))
                 {
-                    return true;
+                    if (DayDrawLimit <= -1 || DayDrawCount < DayDrawLimit)
+                    {
+                        return true;
+                    }
                 }
 
+                // 如果工作时间段内，且不是摸鱼时间段
                 if (DateTime.Now.IsInWorkTime(WorkTime) && !DateTime.Now.IsInFishTime(FishingTime))
                 {
                     if (DayDrawLimit <= -1 || DayDrawCount < DayDrawLimit)
@@ -539,6 +557,7 @@ namespace Midjourney.Infrastructure.Models
                 Remark = configAccount.Remark,
                 RemixAutoSubmit = configAccount.RemixAutoSubmit,
                 Sponsor = configAccount.Sponsor,
+                IsSponsor = configAccount.IsSponsor,
                 Sort = configAccount.Sort,
                 Interval = configAccount.Interval,
 
@@ -608,6 +627,67 @@ namespace Midjourney.Infrastructure.Models
             {
                 SubChannels.Clear();
                 SubChannelValues.Clear();
+            }
+        }
+
+        /// <summary>
+        /// 赞助账号校验
+        /// </summary>
+        public void SponsorValidate()
+        {
+            if (DayDrawLimit > 0 && DayDrawLimit < 10)
+            {
+                DayDrawLimit = 10;
+            }
+
+            if (CoreSize <= 0)
+            {
+                CoreSize = 1;
+            }
+
+            if (QueueSize <= 0)
+            {
+                QueueSize = 1;
+            }
+
+            if (MaxQueueSize <= 0)
+            {
+                MaxQueueSize = 1;
+            }
+
+            if (TimeoutMinutes < 5)
+            {
+                TimeoutMinutes = 5;
+            }
+
+            if (TimeoutMinutes > 30)
+            {
+                TimeoutMinutes = 30;
+            }
+
+            if (Interval > 180)
+            {
+                Interval = 180;
+            }
+
+            if (AfterIntervalMin > 180)
+            {
+                AfterIntervalMin = 180;
+            }
+
+            if (AfterIntervalMax > 180)
+            {
+                AfterIntervalMax = 180;
+            }
+
+            if (EnableMj != true)
+            {
+                EnableMj = true;
+            }
+
+            if (Sponsor?.Length > 1000)
+            {
+                Sponsor = Sponsor.Substring(0, 1000);
             }
         }
     }
