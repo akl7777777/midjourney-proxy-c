@@ -55,6 +55,10 @@ namespace Midjourney.Infrastructure.Storage
             {
                 _instance = new TencentCosStorageService();
             }
+            else if (config.ImageStorageType == ImageStorageType.R2)
+            {
+                _instance = new CloudflareR2StorageService();
+            }
         }
 
         /// <summary>
@@ -201,6 +205,68 @@ namespace Midjourney.Infrastructure.Storage
                         if (opt.ExpiredMinutes > 0)
                         {
                             var priUri = cos.GetSignKey(localPath, opt.ExpiredMinutes);
+                            url = $"{cdn?.Trim()?.Trim('/')}/{priUri.PathAndQuery.TrimStart('/')}";
+                        }
+                    }
+
+                    if (action == TaskAction.SWAP_VIDEO_FACE)
+                    {
+                        imageUrl = url;
+                        thumbnailUrl = url.ToStyle(opt.VideoSnapshotStyle);
+                    }
+                    else if (action == TaskAction.SWAP_FACE)
+                    {
+                        // 换脸不格式化 url
+                        imageUrl = url;
+                        thumbnailUrl = url;
+                    }
+                    else
+                    {
+                        imageUrl = url.ToStyle(opt.ImageStyle);
+                        thumbnailUrl = url.ToStyle(opt.ThumbnailImageStyle);
+                    }
+                });
+
+            }
+            else if(setting.ImageStorageType == ImageStorageType.R2)
+            {
+                var opt = setting.CloudflareR2;
+                var cdn = opt.CustomCdn;
+
+                if (string.IsNullOrWhiteSpace(cdn) || imageUrl.StartsWith(cdn))
+                {
+                    return;
+                }
+
+                // 本地锁
+                LocalLock.TryLock(lockKey, TimeSpan.FromSeconds(10), () =>
+                {
+                    var r2 = new CloudflareR2StorageService();
+
+                    // 替换 url
+                    var url = $"{cdn?.Trim()?.Trim('/')}/{localPath}{uri?.Query}";
+
+                    // 下载图片并保存
+                    using (HttpClient client = new HttpClient(hch))
+                    {
+                        client.Timeout = TimeSpan.FromMinutes(15);
+
+                        var response = client.GetAsync(imageUrl).Result;
+                        response.EnsureSuccessStatusCode();
+                        var stream = response.Content.ReadAsStreamAsync().Result;
+
+                        var mm = MimeKit.MimeTypes.GetMimeType(Path.GetFileName(localPath));
+                        if (string.IsNullOrWhiteSpace(mm))
+                        {
+                            mm = "image/png";
+                        }
+
+                        r2.SaveAsync(stream, localPath, mm);
+
+                        // 如果配置了链接有效期，则生成带签名的链接
+                        if (opt.ExpiredMinutes > 0)
+                        {
+                            var priUri = r2.GetSignKey(localPath, opt.ExpiredMinutes);
                             url = $"{cdn?.Trim()?.Trim('/')}/{priUri.PathAndQuery.TrimStart('/')}";
                         }
                     }
