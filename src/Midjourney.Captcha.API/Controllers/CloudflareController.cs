@@ -47,7 +47,7 @@ namespace Midjourney.Captcha.API.Controllers
                 return BadRequest("State 不能为空");
             }
 
-            QueueHostedService.EnqueueRequest(request);
+            CloudflareQueueHostedService.EnqueueRequest(request);
 
             return Ok();
         }

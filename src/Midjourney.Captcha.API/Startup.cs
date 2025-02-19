@@ -125,8 +125,9 @@ namespace Midjourney.Captcha.API
                 }
             });
 
-            // 注册服务
-            services.AddHostedService<QueueHostedService>();
+            // 注册队列服务
+            services.AddHostedService<CloudflareQueueHostedService>();
+            services.AddHostedService<SeleniumLoginQueueHostedService>();
         }
 
         public void Configure(IApplicationBuilder app, IHostEnvironment env)
@@ -138,6 +139,8 @@ namespace Midjourney.Captcha.API
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            GlobalConfiguration.ContentRootPath = env.ContentRootPath;
 
             app.UseDefaultFiles(); // 启用默认文件（index.html）
             app.UseStaticFiles(); // 配置提供静态文件

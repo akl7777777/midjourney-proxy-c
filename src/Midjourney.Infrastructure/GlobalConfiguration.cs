@@ -40,7 +40,7 @@ namespace Midjourney.Infrastructure
         /// <summary>
         /// 版本号
         /// </summary>
-        public static string Version { get; set; } = "v6.0.0-beta.9";
+        public static string Version { get; set; } = "v6.1.2";
 
         /// <summary>
         /// 全局配置项
@@ -51,6 +51,16 @@ namespace Midjourney.Infrastructure
         /// 全局缓存项
         /// </summary>
         public static IMemoryCache MemoryCache { get; set; }
+
+        /// <summary>
+        /// 站点根目录 wwwroot
+        /// </summary>
+        public static string WebRootPath { get; set; }
+
+        /// <summary>
+        /// 静态文件根目录
+        /// </summary>
+        public static string ContentRootPath { get; set; }
 
         /// <summary>
         /// 判断是否是 Windows 系统

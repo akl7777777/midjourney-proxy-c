@@ -29,10 +29,12 @@ using Microsoft.Extensions.Caching.Memory;
 using Midjourney.Infrastructure.Data;
 using Midjourney.Infrastructure.Dto;
 using Midjourney.Infrastructure.LoadBalancer;
+using Midjourney.Infrastructure.Models;
 using Midjourney.Infrastructure.Services;
 using Midjourney.Infrastructure.StandardTable;
 using Midjourney.Infrastructure.Storage;
 using MongoDB.Driver;
+using RestSharp;
 using Serilog;
 using System.Net;
 using System.Text.Json;
@@ -195,6 +197,9 @@ namespace Midjourney.API.Controllers
                 Role = EUserRole.USER,
                 Status = EUserStatus.NORMAL,
                 DayDrawLimit = GlobalConfiguration.Setting.RegisterUserDefaultDayLimit,
+                TotalDrawLimit = GlobalConfiguration.Setting.RegisterUserDefaultTotalLimit,
+                CoreSize = GlobalConfiguration.Setting.RegisterUserDefaultCoreSize,
+                QueueSize = GlobalConfiguration.Setting.RegisterUserDefaultQueueSize,
                 Email = mail,
                 RegisterIp = ip,
                 RegisterTime = DateTime.Now,
@@ -493,6 +498,123 @@ namespace Midjourney.API.Controllers
         }
 
         /// <summary>
+        /// 账号登录（通过账号、密码、2FA）
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
+        [HttpPost("account-login/{id}")]
+        public Result AccountLogin(string id)
+        {
+            var user = _workContext.GetUser();
+            if (user == null)
+            {
+                return Result.Fail("演示模式，禁止操作");
+            }
+
+            var model = DbHelper.Instance.AccountStore.Get(id);
+            if (model == null)
+            {
+                throw new LogicException("账号不存在");
+            }
+
+            if (user.Role != EUserRole.ADMIN && model.SponsorUserId != user.Id)
+            {
+                return Result.Fail("无权限操作");
+            }
+
+            if (string.IsNullOrWhiteSpace(model.LoginAccount)
+                || string.IsNullOrWhiteSpace(model.LoginPassword)
+                || string.IsNullOrWhiteSpace(model.Login2fa))
+            {
+                return Result.Fail("账号、密码、2FA 不能为空");
+            }
+
+            var ok = DiscordAccountHelper.AutoLogin(model, model.Enable ?? false);
+            if (ok)
+            {
+                return Result.Ok("登录请求已发送，请稍后刷新列表！");
+            }
+
+            return Result.Fail($"登录请求失败，请稍后重试！");
+        }
+
+        /// <summary>
+        /// 账号登录（通过账号、密码、2FA） - 登录完成回调
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
+        [AllowAnonymous]
+        [HttpPost("account-login-notify")]
+        public ActionResult AccountLoginNotify([FromBody] AutoLoginRequest request)
+        {
+            if (!string.IsNullOrWhiteSpace(request.State) && !string.IsNullOrWhiteSpace(request.LoginAccount))
+            {
+                var item = DbHelper.Instance.AccountStore.Single(c => c.ChannelId == request.State && c.LoginAccount == request.LoginAccount);
+
+                if (item != null && item.IsAutoLogining == true)
+                {
+                    var secret = GlobalConfiguration.Setting.CaptchaNotifySecret;
+                    if (string.IsNullOrWhiteSpace(secret) || secret == request.Secret)
+                    {
+                        // 10 分钟之内有效
+                        if (item.LoginStart != null && (DateTime.Now - item.LoginStart.Value).TotalMinutes > 10)
+                        {
+                            if (request.Success)
+                            {
+                                request.Success = false;
+                                request.Message = "登录超时，超过 10 分钟";
+                            }
+
+                            Log.Warning("登录超时，超过 10 分钟 {@0}, time: {@1}", request, item.LoginStart);
+                        }
+
+                        if (request.Success && !string.IsNullOrWhiteSpace(request.Token))
+                        {
+                            item.IsAutoLogining = false;
+                            item.LoginStart = null;
+                            item.LoginEnd = null;
+                            item.LoginMessage = request.Message;
+                            item.UserToken = request.Token;
+
+                            // 如果登录成功，且登录前是启用状态，则更新为启用状态
+                            if (item.Enable != true && request.LoginBeforeEnabled)
+                            {
+                                item.Enable = request.LoginBeforeEnabled;
+                            }
+                        }
+                        else
+                        {
+                            // 更新失败原因
+                            item.LoginMessage = request.Message;
+                        }
+
+                        // 更新账号信息
+                        DbHelper.Instance.AccountStore.Update(item);
+
+                        // 清空缓存
+                        var inc = _loadBalancer.GetDiscordInstance(item.ChannelId);
+                        inc?.ClearAccountCache(item.Id);
+
+                        if (!request.Success)
+                        {
+                            // 发送邮件
+                            EmailJob.Instance.EmailSend(_properties.Smtp, $"自动登录失败-{item.ChannelId}", $"自动登录失败-{item.ChannelId}, {request.Message}, 请手动登录");
+                        }
+                    }
+                    else
+                    {
+                        // 签名错误
+                        Log.Warning("自动登录回调签名验证失败 {@0}", request);
+
+                        return Ok();
+                    }
+                }
+            }
+
+            return Ok();
+        }
+
+        /// <summary>
         /// 获取 cf 真人验证链接
         /// </summary>
         /// <param name="id"></param>
@@ -777,6 +899,14 @@ namespace Midjourney.API.Controllers
                 param.SponsorValidate();
             }
 
+            model.LoginAccount = param.LoginAccount?.Trim();
+            model.LoginPassword = param.LoginPassword?.Trim();
+            model.Login2fa = param.Login2fa?.Trim();
+            model.IsAutoLogining = false; // 重置自动登录状态
+            model.LoginStart = null;
+            model.LoginEnd = null;
+            model.LoginMessage = null;
+
             model.NijiBotChannelId = param.NijiBotChannelId;
             model.PrivateChannelId = param.PrivateChannelId;
             model.RemixAutoSubmit = param.RemixAutoSubmit;
@@ -926,6 +1056,10 @@ namespace Midjourney.API.Controllers
                     item.PermanentInvitationLink = "****";
                     item.Remark = "****";
 
+                    item.LoginAccount = "****";
+                    item.LoginPassword = "****";
+                    item.Login2fa = "****";
+
                     if (item.SubChannels.Count > 0)
                     {
                         // 加密
@@ -1035,6 +1169,10 @@ namespace Midjourney.API.Controllers
                     item.CfHashUrl = "****";
                     item.PermanentInvitationLink = "****";
                     item.Remark = "****";
+
+                    item.LoginAccount = "****";
+                    item.LoginPassword = "****";
+                    item.Login2fa = "****";
 
                     if (item.SubChannels.Count > 0)
                     {
@@ -1271,6 +1409,11 @@ namespace Midjourney.API.Controllers
                 }
 
                 oldToken = model?.Token;
+
+                user.ValidEndTime = model.ValidEndTime;
+                user.ValidStartTime = model.ValidStartTime;
+                user.CoreSize = model.CoreSize;
+                user.QueueSize = model.QueueSize;
 
                 user.LastLoginIp = model.LastLoginIp;
                 user.LastLoginTime = model.LastLoginTime;
@@ -1712,7 +1855,12 @@ namespace Midjourney.API.Controllers
                 return Result.Fail("演示模式，禁止操作");
             }
 
+            var oldSetting = GlobalConfiguration.Setting;
+
             setting.Id = Constants.DEFAULT_SETTING_ID;
+
+            // 保留原来的配置
+            setting.IsMongo = oldSetting.IsMongo;
 
             LiteDBHelper.SettingStore.Update(setting);
 

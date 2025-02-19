@@ -10,7 +10,7 @@ The most powerful, complete, full-featured, completely free and open source Midj
 
 代理 Midjourney 的 Discord 频道，通过 API 绘图，支持图片、视频一键换脸，公益项目，提供免费绘图接口。
 
-🦄 截至 2024 年 10 月，根据用户反馈汇总统计，使用本项目总绘图量超过 2000万+ 张🐂，日绘图量 20万+ 张！
+🦄 全球最大的 Midjourney 绘图 API，总绘图量超过 1 亿+ 🐂！
 
 ⭐ 如果觉得项目不错，请一定帮忙点个 `Star`，万分感谢！
 
@@ -23,6 +23,11 @@ The most powerful, complete, full-featured, completely free and open source Midj
 [Midjourney公益群](https://qm.qq.com/q/k88clCkyMS)（QQ群：565908696）
 
 <img src="./docs/screenshots/565908696.png" alt="欢迎" width="360"/>
+
+## 路线图
+
+- [ ] 新增 Sqlite、MySQL、SqlServer、PostgreSQL 数据库支持；感谢 `@如风` 赞助此功能！
+- [ ] 新增 账号限制、并发、有效期等功能；感谢 `@TOOM` 赞助此功能！
 
 ## 主要功能
 
@@ -95,6 +100,8 @@ The most powerful, complete, full-featured, completely free and open source Midj
 - [x] MJ 翻译、NIJI 翻译独立配置
 - [x] 转换 Niji 为 MJ：启用后将 Niji · journey 任务自动转为 Midjourney 任务，并对任务添加 --niji 后缀（转换后出图效果是一致的），即：不添加 Niji 机器人也可以通过 Niji 机器人绘图
 - [x] 转换 --niji 为 Niji Bot：启用后当 prompt 中包含 --niji 时，将会自动转换为 Niji·journey Bot 任务
+- [x] 支持账号自动登录功能（Discord 账号开启 2FA <https://github.com/trueai-org/midjourney-proxy/wiki/2FAopen>，登陆器配置 YesCaptchaKey <https://yescaptcha.com/i/4pizLQ>）
+- [ ] 自动加入频道、自动切换频道（暂未支持）
 
 ## 在线预览
 
@@ -105,8 +112,8 @@ The most powerful, complete, full-featured, completely free and open source Midj
 - 公益接口：<https://ai.trueai.org/mj>
 - 接口文档：<https://ai.trueai.org/swagger>
 - 接口密钥：`无`
-- CloudFlare 自动验证服务器地址：<http://47.76.110.222:8081>
-- CloudFlare 自动验证服务器文档：<http://47.76.110.222:8081/swagger>
+- 自动验证/自动登录服务器地址：<http://47.76.110.222:8081>
+- 自动验证/自动登录服务器文档：<http://47.76.110.222:8081/swagger>
 
 ## 预览截图
 
@@ -114,12 +121,11 @@ The most powerful, complete, full-featured, completely free and open source Midj
 
 ## 客户端推荐
 
-- **GoAmzAI** ⭐⭐⭐⭐⭐: <https://github.com/Licoy/GoAmzAI>
-  -	打开后台 -> 绘画管理 -> 新增 -> MJ 绘画接口地址 -> <https://ai.trueai.org/mj>
-
-- **ChatGPT Midjourney**: <https://github.com/ChatAnyTeam/ChatAny>
+- **ChatAny**: <https://github.com/ChatAnyTeam/ChatAny>
   - 一键拥有你自己的 ChatGPT+StabilityAI+Midjourney 网页服务 -> <https://aidemo.xiazai.zip/#/mj>
   - 打开网站 -> 设置 -> 自定义接口 -> 模型(Midjourney) -> 接口地址 -> <https://ai.trueai.org/mj>
+
+- **GoAmzAI**: <https://github.com/Licoy/GoAmzAI>
 
 - **ChatGPT Web Midjourney Proxy**: <https://github.com/Dooy/chatgpt-web-midjourney-proxy> 
   - 打开网站 <https://vercel.ddaiai.com> -> 设置 -> MJ 绘画接口地址 -> <https://ai.trueai.org>
@@ -277,15 +283,15 @@ curl -o linux_install.sh https://raw.githubusercontent.com/trueai-org/midjourney
 
 ```json
 {
-  "enable": true,
-  "bucketName": "mjopen",
-  "region": null,
-  "accessKeyId": "LTAIa***",
-  "accessKeySecret": "QGqO7***",
-  "endpoint": "oss-cn-hongkong-internal.aliyuncs.com",
-  "customCdn": "https://mjcdn.googlec.cc",
-  "imageStyle": "x-oss-process=style/webp",
-  "thumbnailImageStyle": "x-oss-process=style/w200"
+  "bucketName": "mjopen",//创建的OSS名称
+  "accessKeyId": "LTAIa***",//OSS的accesskeyID
+  "accessKeySecret": "QGqO7***",//OSS的密钥
+  "endpoint": "oss-cn-hongkong-internal.aliyuncs.com",//OSS的域名
+  "customCdn": null,
+  "imageStyle": null,
+  "thumbnailImageStyle": null,
+  "videoSnapshotStyle": null,
+  "expiredMinutes": 0
 }
 ```
 
@@ -366,7 +372,7 @@ docker run -d \
 "CaptchaNotifyHook": "https://ai.trueai.org"
 ```
 
-## CloudFlare 验证器
+## CloudFlare 验证器/自动登录器
 
 仅支持 Windows 部署（并且支持 TLS 1.3，系统要求 Windows11 或 Windows Server 2022），由于 CloudFlare 验证器需要使用到 Chrome 浏览器，所以需要在 Windows 环境下部署，而在 Linux 环境下部署会依赖很多库，所以暂时不支持 Linux 部署。
 

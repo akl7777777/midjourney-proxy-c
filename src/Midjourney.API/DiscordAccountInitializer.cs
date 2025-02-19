@@ -95,7 +95,9 @@ namespace Midjourney.API
             }
 
             // 判断是否启用了 mongodb
-            if (GlobalConfiguration.Setting.IsMongo)
+            // 并且开启了自动迁移
+            if (GlobalConfiguration.Setting.IsMongo
+                && GlobalConfiguration.Setting.IsMongoAutoMigrate)
             {
                 // 迁移 account user domain banded
                 try
@@ -183,7 +185,6 @@ namespace Midjourney.API
                     LiteDBHelper.SettingStore.Save(GlobalConfiguration.Setting);
                 }
             }
-
 
             // 初始化管理员用户
             // 判断超管是否存在
@@ -275,18 +276,18 @@ namespace Midjourney.API
 
             _ = Task.Run(() =>
             {
+                // 索引
+                DBIndexInit();
+
                 if (GlobalConfiguration.Setting.IsMongo)
                 {
-                    // 索引
-                    MongoIndexInit();
-
                     // 自动迁移 task 数据
                     if (GlobalConfiguration.Setting.IsMongoAutoMigrate)
                     {
                         MongoAutoMigrate();
                     }
 
-                    var oss = GlobalConfiguration.Setting.AliyunOss;
+                    //var oss = GlobalConfiguration.Setting.AliyunOss;
 
                     //if (oss?.Enable == true && oss?.IsAutoMigrationLocalFile == true)
                     //{
@@ -301,59 +302,84 @@ namespace Midjourney.API
         }
 
         /// <summary>
-        /// 初始化 mongodb 索引和最大数据限制
+        /// 初始化数据库索引
         /// </summary>
-        public void MongoIndexInit()
+        public void DBIndexInit()
         {
             try
             {
-                if (!GlobalConfiguration.Setting.IsMongo)
+                LocalLock.TryLock("DBIndexInit", TimeSpan.FromSeconds(10), () =>
                 {
-                    return;
-                }
+                    if (GlobalConfiguration.Setting.IsMongo)
+                    {
+                        // 不能固定大小，因为无法修改数据
+                        //var database = MongoHelper.Instance;
+                        //var collectionName = "task";
+                        //var collectionExists = database.ListCollectionNames().ToList().Contains(collectionName);
+                        //if (!collectionExists)
+                        //{
+                        //    var options = new CreateCollectionOptions
+                        //    {
+                        //        Capped = true,
+                        //        MaxSize = 1024L * 1024L * 1024L * 1024L,  // 1 TB 的集合大小，实际上不受大小限制
+                        //        MaxDocuments = 1000000
+                        //    };
+                        //    database.CreateCollection("task", options);
+                        //}
 
-                LocalLock.TryLock("MongoIndexInit", TimeSpan.FromSeconds(10), () =>
-                {
-                    // 不能固定大小，因为无法修改数据
-                    //var database = MongoHelper.Instance;
-                    //var collectionName = "task";
-                    //var collectionExists = database.ListCollectionNames().ToList().Contains(collectionName);
-                    //if (!collectionExists)
-                    //{
-                    //    var options = new CreateCollectionOptions
-                    //    {
-                    //        Capped = true,
-                    //        MaxSize = 1024L * 1024L * 1024L * 1024L,  // 1 TB 的集合大小，实际上不受大小限制
-                    //        MaxDocuments = 1000000
-                    //    };
-                    //    database.CreateCollection("task", options);
-                    //}
+                        var coll = MongoHelper.GetCollection<TaskInfo>();
 
-                    var coll = MongoHelper.GetCollection<TaskInfo>();
+                        var index1 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Descending(c => c.SubmitTime));
+                        coll.Indexes.CreateOne(index1);
 
-                    var index1 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Descending(c => c.SubmitTime));
-                    coll.Indexes.CreateOne(index1);
+                        var index2 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.PromptEn));
+                        coll.Indexes.CreateOne(index2);
 
-                    var index2 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.PromptEn));
-                    coll.Indexes.CreateOne(index2);
+                        var index3 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Descending(c => c.Prompt));
+                        coll.Indexes.CreateOne(index3);
 
-                    var index3 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Descending(c => c.Prompt));
-                    coll.Indexes.CreateOne(index3);
+                        var index4 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.InstanceId));
+                        coll.Indexes.CreateOne(index4);
 
-                    var index4 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.InstanceId));
-                    coll.Indexes.CreateOne(index4);
+                        var index5 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.Status));
+                        coll.Indexes.CreateOne(index5);
 
-                    var index5 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.Status));
-                    coll.Indexes.CreateOne(index5);
+                        var index6 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.Action));
+                        coll.Indexes.CreateOne(index6);
 
-                    var index6 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.Action));
-                    coll.Indexes.CreateOne(index6);
+                        var index7 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.Description));
+                        coll.Indexes.CreateOne(index7);
 
-                    var index7 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.Description));
-                    coll.Indexes.CreateOne(index7);
+                        var index8 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.ImageUrl));
+                        coll.Indexes.CreateOne(index8);
 
-                    var index8 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.ImageUrl));
-                    coll.Indexes.CreateOne(index8);
+                        var index9 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.UserId));
+                        coll.Indexes.CreateOne(index9);
+
+                        var index10 = new CreateIndexModel<TaskInfo>(Builders<TaskInfo>.IndexKeys.Ascending(c => c.ClientIp));
+                        coll.Indexes.CreateOne(index10);
+                    }
+                    else
+                    {
+                        // LiteDB 索引
+                        var coll = LiteDBHelper.TaskStore.GetCollection();
+                        coll.EnsureIndex(c => c.SubmitTime);
+                        coll.EnsureIndex(c => c.Status);
+                        coll.EnsureIndex(c => c.Action);
+                        coll.EnsureIndex(c => c.UserId);
+                        coll.EnsureIndex(c => c.ClientIp);
+                        coll.EnsureIndex(c => c.InstanceId);
+
+                        //coll.DropIndex("PromptEn");
+                        //coll.DropIndex("Prompt");
+                        //coll.DropIndex("Description");
+                        //coll.DropIndex("ImageUrl");
+
+                        //coll.EnsureIndex("PromptEn", "PromptEn");
+                        //coll.EnsureIndex("Prompt", "Prompt");
+                        //coll.EnsureIndex("Description", "Description");
+                        //coll.EnsureIndex("ImageUrl", "ImageUrl");
+                    }
                 });
             }
             catch (Exception ex)
@@ -701,6 +727,20 @@ namespace Midjourney.API
                 {
                     // 获取获取值
                     account = db.Get(account.Id)!;
+
+                    // 如果账号处于登录中
+                    if (account.IsAutoLogining)
+                    {
+                        // 如果超过 10 分钟
+                        if (account.LoginStart.HasValue && account.LoginStart.Value.AddMinutes(10) < DateTime.Now)
+                        {
+                            account.IsAutoLogining = false;
+                            account.LoginMessage = "登录超时";
+
+                            db.Update("IsAutoLogining,LoginMessage", account);
+                        }
+                    }
+
                     if (account.Enable != true)
                     {
                         return;
@@ -897,6 +937,40 @@ namespace Midjourney.API
 
                     _logger.Error(ex, "Account({@0}) init fail, disabled: {@1}", account.ChannelId, ex.Message);
 
+                    if (setting.EnableAutoLogin)
+                    {
+                        sw.Stop();
+                        info.AppendLine($"{account.Id}尝试自动登录...");
+                        sw.Restart();
+
+                        try
+                        {
+                            // 开始尝试自动登录
+                            var suc = DiscordAccountHelper.AutoLogin(account, true);
+
+                            if (suc)
+                            {
+                                sw.Stop();
+                                info.AppendLine($"{account.Id}自动登录请求成功...");
+                                sw.Restart();
+                            }
+                            else
+                            {
+                                sw.Stop();
+                                info.AppendLine($"{account.Id}自动登录请求失败...");
+                                sw.Restart();
+                            }
+                        }
+                        catch (Exception exa)
+                        {
+                            _logger.Error(exa, "Account({@0}) auto login fail, disabled: {@1}", account.ChannelId, exa.Message);
+
+                            sw.Stop();
+                            info.AppendLine($"{account.Id}自动登录请求异常...");
+                            sw.Restart();
+                        }
+                    }
+
                     account.Enable = false;
                     account.DisabledReason = ex.Message ?? "初始化失败";
 
@@ -1056,6 +1130,15 @@ namespace Midjourney.API
                         param.FishingTime = null;
                     }
                 }
+
+                model.LoginAccount = param.LoginAccount?.Trim();
+                model.LoginPassword = param.LoginPassword?.Trim();
+                model.Login2fa = param.Login2fa?.Trim();
+                model.IsAutoLogining = false; // 重置自动登录状态
+                model.LoginStart = null;
+                model.LoginEnd = null;
+                model.LoginMessage = null;
+
 
                 model.EnableAutoSetRelax = param.EnableAutoSetRelax;
                 model.EnableRelaxToFast = param.EnableRelaxToFast;
