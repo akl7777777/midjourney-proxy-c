@@ -109,6 +109,11 @@ namespace Midjourney.API.Controllers
                     _ => null
                 };
             }
+            else
+            {
+                // 如果没有传入mode则默认为fast
+                _mode = GenerationSpeedMode.FAST;
+            }
         }
 
         /// <summary>
