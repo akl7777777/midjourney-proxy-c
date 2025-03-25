@@ -22,10 +22,12 @@
 // invasion of privacy, or any other unlawful purposes is strictly prohibited. 
 // Violation of these terms may result in termination of the license and may subject the violator to legal action.
 
+using FreeSql.DataAnnotations;
 using LiteDB;
 using Midjourney.Infrastructure.Data;
 using Midjourney.Infrastructure.Dto;
 using MongoDB.Bson.Serialization.Attributes;
+using Newtonsoft.Json.Linq;
 using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
 
@@ -70,18 +72,21 @@ namespace Midjourney.Infrastructure.Models
         /// 用户Token。
         /// </summary>
         [Display(Name = "用户Token")]
+        [Column(StringLength = -1)]
         public string UserToken { get; set; }
 
         /// <summary>
         /// 机器人 Token
         /// </summary>
         [Display(Name = "机器人Token")]
+        [Column(StringLength = -1)]
         public string BotToken { get; set; }
 
         /// <summary>
         /// 用户UserAgent。
         /// </summary>
         [Display(Name = "用户UserAgent")]
+        [Column(StringLength = -1)]
         public string UserAgent { get; set; } = Constants.DEFAULT_DISCORD_USER_AGENT;
 
         /// <summary>
@@ -122,11 +127,13 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// 禁用原因
         /// </summary>
+        [Column(StringLength = -1)]
         public string DisabledReason { get; set; }
 
         /// <summary>
         /// 当前频道的永久邀请链接
         /// </summary>
+        [Column(StringLength = 2000)]
         public string PermanentInvitationLink { get; set; }
 
         /// <summary>
@@ -138,11 +145,13 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// 真人验证 hash Url
         /// </summary>
+        [Column(StringLength = -1)]
         public string CfHashUrl { get; set; }
 
         /// <summary>
         /// 真人验证 Url
         /// </summary>
+        [Column(StringLength = -1)]
         public string CfUrl { get; set; }
 
         /// <summary>
@@ -197,11 +206,13 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// 备注
         /// </summary>
+        [Column(StringLength = -1)]
         public string Remark { get; set; }
 
         /// <summary>
         /// 赞助商（富文本）
         /// </summary>
+        [Column(StringLength = -1)]
         public string Sponsor { get; set; }
 
         /// <summary>
@@ -239,6 +250,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public bool IsAcceptNewTask
         {
             get
@@ -285,6 +297,7 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// 允许速度模式（如果出现不允许的速度模式，将会自动清除关键词）
         /// </summary>
+        [JsonMap]
         public List<GenerationSpeedMode> AllowModes { get; set; } = new List<GenerationSpeedMode>();
 
         /// <summary>
@@ -296,6 +309,7 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// MJ 组件列表。
         /// </summary>
+        [JsonMap]
         public List<Component> Components { get; set; } = new List<Component>();
 
         /// <summary>
@@ -306,6 +320,7 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// NIJI 组件列表。
         /// </summary>
+        [JsonMap]
         public List<Component> NijiComponents { get; set; } = new List<Component>();
 
         /// <summary>
@@ -363,6 +378,7 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// 登录成功/失败消息（用于自动登录）
         /// </summary>
+        [Column(StringLength = 2000)]
         public string LoginMessage { get; set; }
 
         /// <summary>
@@ -383,17 +399,20 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// 垂直领域 IDS
         /// </summary>
+        [JsonMap]
         public List<string> VerticalDomainIds { get; set; } = new List<string>();
 
         /// <summary>
         /// 子频道列表
         /// </summary>
+        [JsonMap]
         public List<string> SubChannels { get; set; } = new List<string>();
 
         /// <summary>
         /// 子频道 ids 通过 SubChannels 计算得出
         /// key: 频道 id, value: 服务器 id
         /// </summary>
+        [JsonMap]
         public Dictionary<string, string> SubChannelValues { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
@@ -401,6 +420,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public int RunningCount { get; set; }
 
         /// <summary>
@@ -408,6 +428,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public int QueueCount { get; set; }
 
         /// <summary>
@@ -415,6 +436,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public bool Running { get; set; }
 
         /// <summary>
@@ -422,6 +444,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public List<CustomComponentModel> Buttons => Components.Where(c => c.Id != 1).SelectMany(x => x.Components)
             .Select(c =>
             {
@@ -440,6 +463,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public bool MjRemixOn => Buttons.Any(x => x.Label == "Remix mode" && x.Style == 3);
 
         /// <summary>
@@ -447,6 +471,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public bool MjFastModeOn =>
             Buttons.Any(x => (x.Label == "Fast mode" || x.Label == "Turbo mode") && x.Style == 3);
 
@@ -455,6 +480,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public List<CustomComponentModel> NijiButtons => NijiComponents.SelectMany(x => x.Components)
             .Select(c =>
             {
@@ -473,6 +499,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public bool NijiRemixOn => NijiButtons.Any(x => x.Label == "Remix mode" && x.Style == 3);
 
         /// <summary>
@@ -486,6 +513,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public List<CustomComponentModel> VersionSelector => Components.Where(c => c.Id == 1)
             .FirstOrDefault()?.Components?.FirstOrDefault()?.Options
             .Select(c =>
@@ -503,6 +531,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public string Version => Components.Where(c => c.Id == 1)
             .FirstOrDefault()?.Components?.FirstOrDefault()?.Options
             .Where(c => c.Default == true).FirstOrDefault()?.Value;
@@ -512,6 +541,7 @@ namespace Midjourney.Infrastructure.Models
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
         public Dictionary<string, object> Displays
         {
             get

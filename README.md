@@ -10,7 +10,7 @@ The most powerful, complete, full-featured, completely free and open source Midj
 
 代理 Midjourney 的 Discord 频道，通过 API 绘图，支持图片、视频一键换脸，公益项目，提供免费绘图接口。
 
-🦄 全球最大的 Midjourney 绘图 API，总绘图量超过 1 亿+ 🐂！
+🦄 全球最大的 Midjourney 绘图 API，日绘图 100万+，总绘图 1 亿+ 🐂！
 
 ⭐ 如果觉得项目不错，请一定帮忙点个 `Star`，万分感谢！
 
@@ -23,11 +23,6 @@ The most powerful, complete, full-featured, completely free and open source Midj
 [Midjourney公益群](https://qm.qq.com/q/k88clCkyMS)（QQ群：565908696）
 
 <img src="./docs/screenshots/565908696.png" alt="欢迎" width="360"/>
-
-## 路线图
-
-- [ ] 新增 Sqlite、MySQL、SqlServer、PostgreSQL 数据库支持；感谢 `@如风` 赞助此功能！
-- [ ] 新增 账号限制、并发、有效期等功能；感谢 `@TOOM` 赞助此功能！
 
 ## 主要功能
 
@@ -101,6 +96,8 @@ The most powerful, complete, full-featured, completely free and open source Midj
 - [x] 转换 Niji 为 MJ：启用后将 Niji · journey 任务自动转为 Midjourney 任务，并对任务添加 --niji 后缀（转换后出图效果是一致的），即：不添加 Niji 机器人也可以通过 Niji 机器人绘图
 - [x] 转换 --niji 为 Niji Bot：启用后当 prompt 中包含 --niji 时，将会自动转换为 Niji·journey Bot 任务
 - [x] 支持账号自动登录功能（Discord 账号开启 2FA <https://github.com/trueai-org/midjourney-proxy/wiki/2FAopen>，登陆器配置 YesCaptchaKey <https://yescaptcha.com/i/4pizLQ>）
+- [x] 新增 Sqlite、MySQL、SqlServer、PostgreSQL 数据库支持；感谢 `@如风` 赞助此功能！
+- [x] 新增 账号限制、并发、有效期等功能；感谢 `@TOOM` 赞助此功能！
 - [ ] 自动加入频道、自动切换频道（暂未支持）
 
 ## 在线预览
@@ -270,16 +267,16 @@ curl -o linux_install.sh https://raw.githubusercontent.com/trueai-org/midjourney
     - `/app/wwwroot/attachments` 绘图文件目录
     - `/app/wwwroot/ephemeral-attachments` describe 生成图片目录
 
-#### 角色说明
+### 角色说明
 
 - `普通用户`：只可用于绘图接口，无法登录后台。
 - `管理员`：可以登录后台，可以查看任务、配置等。
 
-#### 默认用户
+### 默认用户
 
 - 首次启动站点，默认管理员 token 为：`admin`，登录后请重置 `token`
 
-#### 阿里云 OSS 配置项
+### 阿里云 OSS 配置项
 
 ```json
 {
@@ -294,8 +291,16 @@ curl -o linux_install.sh https://raw.githubusercontent.com/trueai-org/midjourney
   "expiredMinutes": 0
 }
 ```
+### 数据库配置
 
-#### MongoDB 配置
+- `LiteDB`（不推荐）：本地数据库库，默认数据库，默认存储位置：`data/mj.db`
+- `Sqlite`：本地数据库，默认存储位置：`data/mj_sqlite.db`
+- `MongoDB`（推荐）：需要配置数据库连接字符串，示例：`mongodb://mongoadmin:***@192.168.3.241`，需要配置数据库名称：`mj`
+- `MySQL`：需要配置数据库连接字符串，示例：`Data Source=192.168.3.241;Port=3306;User ID=root;Password=xxx; Initial Catalog=mj;Charset=utf8mb4; SslMode=none;Min pool size=1`
+- `SqlServer`：需要配置数据库连接字符串，示例：`Data Source=192.168.3.241;User Id=sa;Password=xxx;Initial Catalog=mj;Encrypt=True;TrustServerCertificate=True;Pooling=true;Min Pool Size=1`
+- `PostgreSQL`：需要配置数据库连接字符串，示例：`Host=192.168.3.241;Port=5432;Username=mj;Password=xxx; Database=mj;ArrayNullabilityMode=Always;Pooling=true;Minimum Pool Size=1`，需要启动扩展支持字典类型 `CREATE EXTENSION hstore`
+
+### MongoDB 配置
 
 > 如果你的任务量未来可能超过 10 万，推荐 Docker 部署 MongoDB。
 
@@ -322,15 +327,15 @@ docker run -d \
 # 创建数据库（也可以通过 BT 创建数据库）（可选）
 ```
 
-#### 换脸配置
+### 换脸配置
 
-- 打开官网注册并复制 Token: https://replicate.com/codeplugtech/face-swap
+- 打开官网注册并复制 Token: https://replicate.com/cdingram/face-swap
 
 ```json
 {
   "token": "****",
   "enableFaceSwap": true,
-  "faceSwapVersion": "278a81e7ebb22db98bcba54de985d22cc1abeead2754eb1f2af717247be69b34",
+  "faceSwapVersion": "d1d6ea8c8be89d664a07a457526f7128109dee7030fdac424788d762c71ed111",
   "faceSwapCoreSize": 3,
   "faceSwapQueueSize": 10,
   "faceSwapTimeoutMinutes": 10,
@@ -345,7 +350,7 @@ docker run -d \
 }
 ```
 
-#### Banned prompt 限流配置
+### Banned prompt 限流配置
 
 - 当日触发触发 `Banned prompt detected` n 次后，封锁用户的时长（分钟）配置（白名单用户除外）。
 
@@ -420,12 +425,13 @@ docker run -d \
 
 非常感谢赞助商和群友的帮助和支持！
 
-<a href="https://goapi.gptnb.ai"><img src="https://pic.scdn.app/images/2023/06/26/favicon.png" style="width: 60px;"></a>
-<a href="https://d.goamzai.com" target="_blank"><img src="https://d.goamzai.com/logo.png" style="width: 60px;"></a>
-<a href="https://api.ephone.ai" target="_blank"><img src="https://img.fy6b.com/2024/10/25/a0bc4cac5e72f.png" style="width: 60px;"></a>
-<a href="https://api.mjdjourney.cn" target="_blank"><img src="https://cdn.optiai.cn/file/upload/2024/08/05/1820477746069901312.png?x-oss-process=image/resize,p_25/format,webp" style="width: 60px;"></a>
-<a href="https://rixapi.com" target="_blank"><img src="https://img.fy6b.com/2024/08/23/53d7e54cc31a2.png" style="width: 60px;"></a>
-<a href="https://ai.midjourneye.com" target="_blank"><img src="https://oss.midjourneye.com/gofunai/logo.jpg" style="width: 60px;"></a>
+<a href="https://goapi.gptnb.ai"><img src="https://pic.scdn.app/images/2023/06/26/favicon.png" style="width: 90px;"></a>
+<a href="https://d.goamzai.com" target="_blank"><img src="https://d.goamzai.com/logo.png" style="width: 90px;"></a>
+<a href="https://api.ephone.ai" target="_blank"><img src="https://img.fy6b.com/2024/10/25/a0bc4cac5e72f.png" style="width: 90px;"></a>
+<a href="https://www.bzu.cn"><img src="https://image.bzu.cn/web_img/202502/2efb28c16704c17.png" style="height: 90px;"></a>
+<a href="https://rixapi.com" target="_blank"><img src="https://img.fy6b.com/2024/08/23/53d7e54cc31a2.png" style="width: 90px;"></a>
+<a href="https://api.mjdjourney.cn" target="_blank"><img src="https://api.mjdjourney.cn/fileSystem/download/20241220/1b2dd3d0-99ef-40c4-89b3-db11956a3299.png" style="width: 90px;"></a>
+<a href="https://ai.midjourneye.com" target="_blank"><img src="https://gofunai-1328239556.cos.accelerate.myqcloud.com/gofunai/logo.jpg" style="width: 90px;"></a>
 
 ## 安全协议
 

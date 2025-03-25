@@ -22,8 +22,10 @@
 // invasion of privacy, or any other unlawful purposes is strictly prohibited. 
 // Violation of these terms may result in termination of the license and may subject the violator to legal action.
 
+using FreeSql.DataAnnotations;
 using Midjourney.Infrastructure.Data;
 using MongoDB.Bson.Serialization.Attributes;
+using Newtonsoft.Json.Linq;
 
 namespace Midjourney.Infrastructure.Models
 {
@@ -47,6 +49,7 @@ namespace Midjourney.Infrastructure.Models
         /// <summary>
         /// 关键词
         /// </summary>
+        [JsonMap]
         public List<string> Keywords { get; set; } = new List<string>();
 
         /// <summary>
