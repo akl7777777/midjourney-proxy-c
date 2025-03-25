@@ -1124,6 +1124,7 @@ namespace Midjourney.API.Controllers
                     .OrderByIf(nameof(DiscordAccount.Sponsor).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.Sponsor, sort.Reverse)
                     .OrderByIf(nameof(DiscordAccount.DateCreated).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.DateCreated, sort.Reverse)
                     .OrderByIf(string.IsNullOrWhiteSpace(sort.Predicate), c => c.Sort, false)
+                    .OrderBy(c => c.Id) // 添加稳定的次要排序确保分页一致性
                     .Skip((page.Current - 1) * page.PageSize)
                     .Take(page.PageSize)
                     .ToList();
@@ -1138,16 +1139,57 @@ namespace Midjourney.API.Controllers
                     .WhereIf(!string.IsNullOrWhiteSpace(param.Sponsor), c => c.Sponsor.Contains(param.Sponsor));
 
                 count = query.Count();
-                list = query
-                    .OrderByIf(nameof(DiscordAccount.GuildId).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.GuildId, sort.Reverse)
-                    .OrderByIf(nameof(DiscordAccount.ChannelId).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.ChannelId, sort.Reverse)
-                    .OrderByIf(nameof(DiscordAccount.Enable).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.Enable, sort.Reverse)
-                    .OrderByIf(nameof(DiscordAccount.Remark).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.Remark, sort.Reverse)
-                    .OrderByIf(nameof(DiscordAccount.Sponsor).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.Sponsor, sort.Reverse)
-                    .OrderByIf(nameof(DiscordAccount.DateCreated).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.DateCreated, sort.Reverse)
-                    .OrderByIf(string.IsNullOrWhiteSpace(sort.Predicate), c => c.Sort, false)
+                
+                // 获取所有数据，然后在内存中排序（这是一个临时解决方案）
+                var allItems = query.ToList();
+                
+                // 在内存中进行排序
+                if (nameof(DiscordAccount.GuildId).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase))
+                {
+                    allItems = sort.Reverse ? 
+                        allItems.OrderByDescending(c => c.GuildId).ThenBy(c => c.Id).ToList() : 
+                        allItems.OrderBy(c => c.GuildId).ThenBy(c => c.Id).ToList();
+                }
+                else if (nameof(DiscordAccount.ChannelId).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase))
+                {
+                    allItems = sort.Reverse ? 
+                        allItems.OrderByDescending(c => c.ChannelId).ThenBy(c => c.Id).ToList() : 
+                        allItems.OrderBy(c => c.ChannelId).ThenBy(c => c.Id).ToList();
+                }
+                else if (nameof(DiscordAccount.Enable).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase))
+                {
+                    allItems = sort.Reverse ? 
+                        allItems.OrderByDescending(c => c.Enable).ThenBy(c => c.Id).ToList() : 
+                        allItems.OrderBy(c => c.Enable).ThenBy(c => c.Id).ToList();
+                }
+                else if (nameof(DiscordAccount.Remark).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase))
+                {
+                    allItems = sort.Reverse ? 
+                        allItems.OrderByDescending(c => c.Remark).ThenBy(c => c.Id).ToList() : 
+                        allItems.OrderBy(c => c.Remark).ThenBy(c => c.Id).ToList();
+                }
+                else if (nameof(DiscordAccount.Sponsor).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase))
+                {
+                    allItems = sort.Reverse ? 
+                        allItems.OrderByDescending(c => c.Sponsor).ThenBy(c => c.Id).ToList() : 
+                        allItems.OrderBy(c => c.Sponsor).ThenBy(c => c.Id).ToList();
+                }
+                else if (nameof(DiscordAccount.DateCreated).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase))
+                {
+                    allItems = sort.Reverse ? 
+                        allItems.OrderByDescending(c => c.DateCreated).ThenBy(c => c.Id).ToList() : 
+                        allItems.OrderBy(c => c.DateCreated).ThenBy(c => c.Id).ToList();
+                }
+                else
+                {
+                    // 默认排序
+                    allItems = allItems.OrderBy(c => c.Sort).ThenBy(c => c.Id).ToList();
+                }
+                
+                // 执行分页
+                list = allItems
                     .Skip((page.Current - 1) * page.PageSize)
-                    .Limit(page.PageSize)
+                    .Take(page.PageSize)
                     .ToList();
             }
             else
@@ -1172,6 +1214,7 @@ namespace Midjourney.API.Controllers
                         .OrderByIf(nameof(DiscordAccount.Sponsor).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.Sponsor, sort.Reverse)
                         .OrderByIf(nameof(DiscordAccount.DateCreated).Equals(sort.Predicate, StringComparison.OrdinalIgnoreCase), c => c.DateCreated, sort.Reverse)
                         .OrderByIf(string.IsNullOrWhiteSpace(sort.Predicate), c => c.Sort, false)
+                        .OrderBy(c => c.Id) // 添加稳定的次要排序确保分页一致性
                         .Skip((page.Current - 1) * page.PageSize)
                         .Take(page.PageSize)
                         .ToList();
