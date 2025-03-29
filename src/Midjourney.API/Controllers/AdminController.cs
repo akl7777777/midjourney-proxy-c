@@ -51,6 +51,7 @@ namespace Midjourney.API.Controllers
     {
         private readonly IMemoryCache _memoryCache;
         private readonly ITaskService _taskService;
+        private readonly BackupAccountPoolService _backupAccountPoolService;
 
         // 是否匿名用户
         private readonly bool _isAnonymous;
@@ -66,13 +67,15 @@ namespace Midjourney.API.Controllers
             DiscordAccountInitializer discordAccountInitializer,
             IMemoryCache memoryCache,
             WorkContext workContext,
-            IHttpContextAccessor context)
+            IHttpContextAccessor context,
+            BackupAccountPoolService backupAccountPoolService)
         {
             _memoryCache = memoryCache;
             _loadBalancer = loadBalancer;
             _taskService = taskService;
             _discordAccountInitializer = discordAccountInitializer;
             _workContext = workContext;
+            _backupAccountPoolService = backupAccountPoolService;
 
             // 如果不是管理员，并且是演示模式时，则是为匿名用户
             var user = workContext.GetUser();
@@ -2071,6 +2074,124 @@ namespace Midjourney.API.Controllers
             var success = DbHelper.Verify();
 
             return success ? Result.Ok() : Result.Fail("连接失败");
+        }
+
+        /// <summary>
+        /// 获取备用账号池配置
+        /// </summary>
+        /// <returns>备用账号池配置</returns>
+        [HttpGet("backup-account-pool")]
+        public ActionResult<BackupAccountPool> GetBackupAccountPool()
+        {
+            var user = _workContext.GetUser();
+            if (user == null || user.Role != EUserRole.ADMIN)
+            {
+                return Forbid();
+            }
+
+            var config = _backupAccountPoolService.GetConfig();
+            return Ok(config);
+        }
+
+        /// <summary>
+        /// 更新备用账号池配置
+        /// </summary>
+        /// <param name="config">备用账号池配置</param>
+        /// <returns>操作结果</returns>
+        [HttpPut("backup-account-pool")]
+        public ActionResult<Result> UpdateBackupAccountPool([FromBody] BackupAccountPool config)
+        {
+            var user = _workContext.GetUser();
+            if (user == null || user.Role != EUserRole.ADMIN)
+            {
+                return Result.Fail("无权限操作");
+            }
+
+            if (_isAnonymous)
+            {
+                return Result.Fail("演示模式，禁止操作");
+            }
+
+            _backupAccountPoolService.SaveConfig(config);
+            return Result.Ok();
+        }
+
+        /// <summary>
+        /// 添加账号到备用池
+        /// </summary>
+        /// <param name="accountId">账号ID</param>
+        /// <returns>操作结果</returns>
+        [HttpPost("backup-account-pool/add/{accountId}")]
+        public ActionResult<Result> AddToBackupPool(string accountId)
+        {
+            var user = _workContext.GetUser();
+            if (user == null || user.Role != EUserRole.ADMIN)
+            {
+                return Result.Fail("无权限操作");
+            }
+
+            if (_isAnonymous)
+            {
+                return Result.Fail("演示模式，禁止操作");
+            }
+
+            bool success = _backupAccountPoolService.AddToBackupPool(accountId);
+            if (!success)
+            {
+                return Result.Fail("账号不存在或已在备用池中");
+            }
+
+            return Result.Ok();
+        }
+
+        /// <summary>
+        /// 从备用池移除账号
+        /// </summary>
+        /// <param name="accountId">账号ID</param>
+        /// <returns>操作结果</returns>
+        [HttpPost("backup-account-pool/remove/{accountId}")]
+        public ActionResult<Result> RemoveFromBackupPool(string accountId)
+        {
+            var user = _workContext.GetUser();
+            if (user == null || user.Role != EUserRole.ADMIN)
+            {
+                return Result.Fail("无权限操作");
+            }
+
+            if (_isAnonymous)
+            {
+                return Result.Fail("演示模式，禁止操作");
+            }
+
+            bool success = _backupAccountPoolService.RemoveFromBackupPool(accountId);
+            if (!success)
+            {
+                return Result.Fail("账号不在备用池中");
+            }
+
+            return Result.Ok();
+        }
+
+        /// <summary>
+        /// 手动检查并激活备用账号
+        /// </summary>
+        /// <returns>操作结果</returns>
+        [HttpPost("backup-account-pool/check")]
+        public async Task<ActionResult<Result>> CheckBackupAccountPool()
+        {
+            var user = _workContext.GetUser();
+            if (user == null || user.Role != EUserRole.ADMIN)
+            {
+                return Result.Fail("无权限操作");
+            }
+
+            if (_isAnonymous)
+            {
+                return Result.Fail("演示模式，禁止操作");
+            }
+
+            int activatedCount = await _backupAccountPoolService.CheckAndActivateBackupAccounts();
+            return Result.Ok($"已激活 {activatedCount} 个备用账号");
         }
     }
 }

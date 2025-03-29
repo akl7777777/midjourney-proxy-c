@@ -32,7 +32,9 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.OpenApi.Models;
 using Midjourney.Infrastructure.Data;
+using Midjourney.Infrastructure.Jobs;
 using Midjourney.Infrastructure.Options;
+using Midjourney.Infrastructure.Services;
 using Serilog;
 
 namespace Midjourney.API
@@ -186,6 +188,10 @@ namespace Midjourney.API
             // 注册 Discord 账号初始化器
             services.AddSingleton<DiscordAccountInitializer>();
             services.AddHostedService(provider => provider.GetRequiredService<DiscordAccountInitializer>());
+
+            // 注册备用账号池服务
+            services.AddScoped<BackupAccountPoolService>();
+            services.AddHostedService<BackupAccountPoolJob>();
 
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             services.AddEndpointsApiExplorer();
