@@ -406,28 +406,28 @@ namespace Midjourney.API.Controllers
         [HttpPost("describe")]
         public ActionResult<SubmitResultVO> Describe([FromBody] SubmitDescribeDTO describeDTO)
         {
-            if (string.IsNullOrWhiteSpace(describeDTO.Base64))
+            if (string.IsNullOrWhiteSpace(describeDTO.Base64)
+                && string.IsNullOrWhiteSpace(describeDTO.Link))
+            {
+                return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64或link不能为空"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(describeDTO.Link) &&
+                !Regex.IsMatch(describeDTO.Link, @"^https?://.+"))
             {
                 return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "输入不能为空"));
             }
 
-            var setting = GlobalConfiguration.Setting;
-            if (!setting.EnableUserCustomUploadBase64)
-            {
-                return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "禁止上传"));
-            }
-
             DataUrl dataUrl;
-            // 判断是否为URL
-            if (Uri.TryCreate(describeDTO.Base64, UriKind.Absolute, out Uri uriResult) 
-                && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+
+            var setting = GlobalConfiguration.Setting;
+            if (!string.IsNullOrWhiteSpace(describeDTO.Base64))
             {
-                // 如果是URL，创建包含URL的DataUrl对象
-                dataUrl = new DataUrl("text/plain", System.Text.Encoding.UTF8.GetBytes(describeDTO.Base64));
-            }
-            else
-            {
-                // 如果不是URL，按原有逻辑解析base64
+                if (!setting.EnableUserCustomUploadBase64)
+                {
+                    return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "禁止上传"));
+                }
+
                 try
                 {
                     dataUrl = DataUrl.Parse(describeDTO.Base64);
@@ -437,20 +437,25 @@ namespace Midjourney.API.Controllers
                     return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64格式错误"));
                 }
             }
-
-            var task = NewTask(describeDTO);
-            task.Action = TaskAction.DESCRIBE;
-
-            // 根据输入类型设置不同的描述
-            if (Uri.IsWellFormedUriString(describeDTO.Base64, UriKind.Absolute))
+            else if (!string.IsNullOrWhiteSpace(describeDTO.Link))
             {
-                task.Description = $"/describe {describeDTO.Base64}";
+                dataUrl = new DataUrl()
+                {
+                    Url = describeDTO.Link
+                };
             }
             else
             {
-                string taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType)}";
-                task.Description = $"/describe {taskFileName}";
+                return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64或link不能为空"));
             }
+
+            var task = NewTask(describeDTO);
+
+            task.BotType = GetBotType(describeDTO.BotType);
+            task.Action = TaskAction.DESCRIBE;
+
+            string taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType) ?? Path.GetExtension(dataUrl.Url)}";
+            task.Description = $"/describe {taskFileName}";
 
             NewTaskDoFilter(task, describeDTO.AccountFilter);
 

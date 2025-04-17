@@ -197,7 +197,7 @@ namespace Midjourney.Infrastructure.Services
                 }
             }
 
-            if (instance == null || !instance.Account.IsAcceptNewTask)
+            if (instance == null || instance?.Account?.IsAcceptNewTask != true)
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "无可用的账号实例");
             }
@@ -277,6 +277,11 @@ namespace Midjourney.Infrastructure.Services
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "账号不可用: " + instanceId);
             }
+            if (!discordInstance.IsIdleQueue)
+            {
+                return SubmitResultVO.Fail(ReturnCode.FAILURE, "提交失败，队列已满，请稍后重试");
+            }
+
             return discordInstance.SubmitTaskAsync(task, async () =>
                 await discordInstance.UpscaleAsync(targetMessageId, index, targetMessageHash, messageFlags,
                 task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default), task.RealBotType ?? task.BotType));
@@ -290,6 +295,11 @@ namespace Midjourney.Infrastructure.Services
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "账号不可用: " + instanceId);
             }
+            if (!discordInstance.IsIdleQueue)
+            {
+                return SubmitResultVO.Fail(ReturnCode.FAILURE, "提交失败，队列已满，请稍后重试");
+            }
+
             return discordInstance.SubmitTaskAsync(task, async () =>
                 await discordInstance.VariationAsync(targetMessageId, index, targetMessageHash, messageFlags,
                 task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default), task.RealBotType ?? task.BotType));
@@ -311,6 +321,11 @@ namespace Midjourney.Infrastructure.Services
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "账号不可用: " + instanceId);
             }
+            if (!discordInstance.IsIdleQueue)
+            {
+                return SubmitResultVO.Fail(ReturnCode.FAILURE, "提交失败，队列已满，请稍后重试");
+            }
+
             return discordInstance.SubmitTaskAsync(task, async () =>
                 await discordInstance.RerollAsync(targetMessageId, targetMessageHash, messageFlags,
                 task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default), task.RealBotType ?? task.BotType));
@@ -329,36 +344,63 @@ namespace Midjourney.Infrastructure.Services
                 botType: task.RealBotType ?? task.BotType,
                 describe: true);
 
-            if (discordInstance == null)
+            if (discordInstance == null || discordInstance?.Account?.IsContinueDrawing != true)
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "无可用的账号实例");
             }
+            if (!discordInstance.IsIdleQueue)
+            {
+                return SubmitResultVO.Fail(ReturnCode.FAILURE, "提交失败，队列已满，请稍后重试");
+            }
+
             task.SetProperty(Constants.TASK_PROPERTY_DISCORD_INSTANCE_ID, discordInstance.ChannelId);
             task.InstanceId = discordInstance.ChannelId;
 
             return discordInstance.SubmitTaskAsync(task, async () =>
             {
-                // 判断是否为URL格式
-                var dataString = System.Text.Encoding.UTF8.GetString(dataUrl.Data);
-                if (Uri.TryCreate(dataString, UriKind.Absolute, out Uri uriResult) 
-                    && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+                var link = "";
+                if (dataUrl.Url?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    return await discordInstance.DescribeWithUrlAsync(dataString, 
-                        task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default),
-                        task.BotType);
+                    // TODO 是否转换链接
+                    link = dataUrl.Url;
+                }
+                else
+                {
+                    var taskFileName = $"{Guid.NewGuid():N}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType)}";
+                    var uploadResult = await discordInstance.UploadAsync(taskFileName, dataUrl);
+                    if (uploadResult.Code != ReturnCode.SUCCESS)
+                    {
+                        return Message.Of(uploadResult.Code, uploadResult.Description);
+                    }
+
+                    if (uploadResult.Description.StartsWith("http"))
+                    {
+                        link = uploadResult.Description;
+                    }
+                    else
+                    {
+                        var finalFileName = uploadResult.Description;
+                        var sendImageResult = await discordInstance.SendImageMessageAsync("upload image: " + finalFileName, finalFileName);
+                        if (sendImageResult.Code != ReturnCode.SUCCESS)
+                        {
+                            return Message.Of(sendImageResult.Code, sendImageResult.Description);
+                        }
+                        link = sendImageResult.Description;
+                    }
                 }
 
-                // 原有的文件上传逻辑
-                var taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType)}";
-                var uploadResult = await discordInstance.UploadAsync(taskFileName, dataUrl);
-                if (uploadResult.Code != ReturnCode.SUCCESS)
-                {
-                    return Message.Of(uploadResult.Code, uploadResult.Description);
-                }
-                var finalFileName = uploadResult.Description;
-                return await discordInstance.DescribeAsync(finalFileName, 
-                    task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default),
-                    task.RealBotType ?? task.BotType);
+                //var taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType)}";
+                //var uploadResult = await discordInstance.UploadAsync(taskFileName, dataUrl);
+                //if (uploadResult.Code != ReturnCode.SUCCESS)
+                //{
+                //    return Message.Of(uploadResult.Code, uploadResult.Description);
+                //}
+                //var finalFileName = uploadResult.Description;
+                //return await discordInstance.DescribeAsync(finalFileName, task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default),
+                //  task.RealBotType ?? task.BotType);
+
+                return await discordInstance.DescribeByLinkAsync(link, task.GetProperty<string>(Constants.TASK_PROPERTY_NONCE, default),
+                   task.RealBotType ?? task.BotType);
             });
         }
 
@@ -374,7 +416,7 @@ namespace Midjourney.Infrastructure.Services
                 botType: task.RealBotType ?? task.BotType,
                 shorten: true);
 
-            if (discordInstance == null)
+            if (discordInstance == null || discordInstance?.Account?.IsContinueDrawing != true)
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "无可用的账号实例");
             }
@@ -401,7 +443,7 @@ namespace Midjourney.Infrastructure.Services
                 botType: task.RealBotType ?? task.BotType,
                 blend: true);
 
-            if (discordInstance == null)
+            if (discordInstance == null || discordInstance?.Account?.IsContinueDrawing != true)
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "无可用的账号实例");
             }
@@ -463,9 +505,13 @@ namespace Midjourney.Infrastructure.Services
                 }
             }
 
-            if (discordInstance == null)
+            if (discordInstance == null || discordInstance?.Account?.IsContinueDrawing != true)
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "无可用的账号实例");
+            }
+            if (!discordInstance.IsIdleQueue)
+            {
+                return SubmitResultVO.Fail(ReturnCode.FAILURE, "提交失败，队列已满，请稍后重试");
             }
 
             task.InstanceId = discordInstance.ChannelId;
@@ -760,9 +806,13 @@ namespace Midjourney.Infrastructure.Services
                 }
             }
 
-            if (discordInstance == null)
+            if (discordInstance == null || discordInstance?.Account?.IsContinueDrawing != true)
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "无可用的账号实例");
+            }
+            if (!discordInstance.IsIdleQueue)
+            {
+                return SubmitResultVO.Fail(ReturnCode.FAILURE, "提交失败，队列已满，请稍后重试");
             }
 
             task.InstanceId = discordInstance.ChannelId;
@@ -995,6 +1045,10 @@ namespace Midjourney.Infrastructure.Services
             if (discordInstance == null)
             {
                 return SubmitResultVO.Fail(ReturnCode.NOT_FOUND, "无可用的账号实例");
+            }
+            if (!discordInstance.IsIdleQueue)
+            {
+                return SubmitResultVO.Fail(ReturnCode.FAILURE, "提交失败，队列已满，请稍后重试");
             }
 
             // 请配置私聊频道

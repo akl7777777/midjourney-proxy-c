@@ -258,22 +258,34 @@ namespace Midjourney.Infrastructure.Models
                 // 如果工作时间段和摸鱼时间段都为空
                 if (string.IsNullOrWhiteSpace(WorkTime) && string.IsNullOrWhiteSpace(FishingTime))
                 {
-                    if (DayDrawLimit <= -1 || DayDrawCount < DayDrawLimit)
-                    {
-                        return true;
-                    }
+                    return IsContinueDrawing;
                 }
 
                 // 如果工作时间段内，且不是摸鱼时间段
                 if (DateTime.Now.IsInWorkTime(WorkTime) && !DateTime.Now.IsInFishTime(FishingTime))
                 {
-                    if (DayDrawLimit <= -1 || DayDrawCount < DayDrawLimit)
-                    {
-                        return true;
-                    }
+                    return IsContinueDrawing;
                 }
 
                 // 表示不接收新的任务
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 是否达到最大任务限制 - 是否允许继续绘图
+        /// </summary>
+        [LiteDB.BsonIgnore]
+        [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
+        [Column(IsIgnore = true)]
+        public bool IsContinueDrawing
+        {
+            get
+            {
+                if (DayDrawLimit <= -1 || DayDrawCount < DayDrawLimit)
+                {
+                    return true;
+                }
                 return false;
             }
         }
@@ -387,7 +399,7 @@ namespace Midjourney.Infrastructure.Models
         public int DayDrawLimit { get; set; } = -1;
 
         /// <summary>
-        /// 当日已绘图次数（每 5 分钟自动刷新）
+        /// 当日已绘图次数（每 2 分钟自动刷新）
         /// </summary>
         public int DayDrawCount { get; set; } = 0;
 
@@ -416,7 +428,7 @@ namespace Midjourney.Infrastructure.Models
         public Dictionary<string, string> SubChannelValues { get; set; } = new Dictionary<string, string>();
 
         /// <summary>
-        /// 执行中的任务数
+        /// 执行中的任务数 - 用于前台显示
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
@@ -424,7 +436,7 @@ namespace Midjourney.Infrastructure.Models
         public int RunningCount { get; set; }
 
         /// <summary>
-        /// 队列中的任务数
+        /// 队列中的任务数 - 用于前台显示
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
@@ -432,7 +444,7 @@ namespace Midjourney.Infrastructure.Models
         public int QueueCount { get; set; }
 
         /// <summary>
-        /// wss 是否运行中
+        /// 服务运行中 - 用于前台显示
         /// </summary>
         [LiteDB.BsonIgnore]
         [MongoDB.Bson.Serialization.Attributes.BsonIgnore]
