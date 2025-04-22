@@ -21,9 +21,11 @@
 // The use of this software for any form of illegal face swapping,
 // invasion of privacy, or any other unlawful purposes is strictly prohibited. 
 // Violation of these terms may result in termination of the license and may subject the violator to legal action.
+
 using Midjourney.Infrastructure.Data;
 using Midjourney.Infrastructure.Dto;
 using Midjourney.Infrastructure.LoadBalancer;
+using Midjourney.Infrastructure.Storage;
 using Midjourney.Infrastructure.Util;
 using Serilog;
 
@@ -153,9 +155,32 @@ namespace Midjourney.Infrastructure.Handle
                 task.Progress = parseData.Status;
 
                 string imageUrl = GetImageUrl(message);
-                task.ImageUrl = imageUrl;
-                task.SetProperty(Constants.TASK_PROPERTY_MESSAGE_HASH, discordHelper.GetMessageHash(imageUrl));
-                task.Awake();
+
+                // 如果启用保存过程图片
+                if (GlobalConfiguration.Setting.EnableSaveIntermediateImage
+                    && !string.IsNullOrWhiteSpace(imageUrl))
+                {
+                    var ff = new FileFetchHelper();
+                    var url = ff.FetchFileToStorageAsync(imageUrl).ConfigureAwait(false).GetAwaiter().GetResult();
+                    if (!string.IsNullOrWhiteSpace(url))
+                    {
+                        imageUrl = url;
+                    }
+
+                    // 必须确保任务仍是 IN_PROGRESS 状态
+                    if (task.Status == TaskStatus.IN_PROGRESS)
+                    {
+                        task.ImageUrl = imageUrl;
+                        task.SetProperty(Constants.TASK_PROPERTY_MESSAGE_HASH, discordHelper.GetMessageHash(imageUrl));
+                        task.Awake();
+                    }
+                }
+                else
+                {
+                    task.ImageUrl = imageUrl;
+                    task.SetProperty(Constants.TASK_PROPERTY_MESSAGE_HASH, discordHelper.GetMessageHash(imageUrl));
+                    task.Awake();
+                }
             }
         }
     }

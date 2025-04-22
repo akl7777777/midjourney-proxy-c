@@ -22,6 +22,12 @@
 // invasion of privacy, or any other unlawful purposes is strictly prohibited.
 // Violation of these terms may result in termination of the license and may subject the violator to legal action.
 
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using Midjourney.Infrastructure.Data;
 using Midjourney.Infrastructure.Services;
@@ -29,13 +35,6 @@ using Midjourney.Infrastructure.Storage;
 using Midjourney.Infrastructure.Util;
 using Newtonsoft.Json.Linq;
 using Serilog;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.RegularExpressions;
-
 using ILogger = Serilog.ILogger;
 
 namespace Midjourney.Infrastructure.LoadBalancer
@@ -46,7 +45,6 @@ namespace Midjourney.Infrastructure.LoadBalancer
     /// </summary>
     public class DiscordInstance
     {
-
         private readonly object _lockAccount = new object();
 
         private readonly ILogger _logger = Log.Logger;
@@ -54,9 +52,17 @@ namespace Midjourney.Infrastructure.LoadBalancer
         private readonly ITaskStoreService _taskStoreService;
         private readonly INotifyService _notifyService;
 
-        private readonly ConcurrentDictionary<TaskInfo, int> _runningTasks = [];
+        /// <summary>
+        /// 正在运行的任务列表 key：任务ID，value：任务信息
+        /// </summary>
+        private readonly ConcurrentDictionary<string, TaskInfo> _runningTasks = [];
+
+        /// <summary>
+        /// 任务Future映射 key：任务ID，value：作业 Action
+        /// </summary>
         private readonly ConcurrentDictionary<string, Task> _taskFutureMap = [];
-        private AsyncParallelLock _semaphoreSlimLock;
+
+        private readonly AsyncParallelLock _semaphoreSlimLock;
 
         private readonly Task _longTask;
         private readonly Task _longTaskCache;
@@ -220,7 +226,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
         /// 获取正在运行的任务列表。
         /// </summary>
         /// <returns>正在运行的任务列表</returns>
-        public List<TaskInfo> GetRunningTasks() => _runningTasks.Keys.ToList();
+        public List<TaskInfo> GetRunningTasks() => _runningTasks.Values.ToList();
 
         /// <summary>
         /// 获取队列中的任务列表。
@@ -252,8 +258,11 @@ namespace Midjourney.Infrastructure.LoadBalancer
 
                 try
                 {
-                    // 等待信号通知
-                    _mre.WaitOne();
+                    // 如果队列中没有任务，则等待信号通知
+                    if (_queueTasks.Count <= 0)
+                    {
+                        _mre.WaitOne();
+                    }
 
                     // 判断是否还有资源可用
                     while (!_semaphoreSlimLock.IsLockAvailable())
@@ -262,19 +271,18 @@ namespace Midjourney.Infrastructure.LoadBalancer
                         Thread.Sleep(100);
                     }
 
-                    // 判断信号最大值是否为 Account.CoreSize
-                    if (_semaphoreSlimLock.MaxParallelism != Account.CoreSize)
+                    // 如果并发数修改，判断信号最大值是否为 Account.CoreSize
+                    while (_semaphoreSlimLock.MaxParallelism != Account.CoreSize)
                     {
-                        // 如果任务并发变更
-                        // 等待释放完
-                        while (_runningTasks.Count > 0)
+                        // 重新设置信号量
+                        var oldMax = _semaphoreSlimLock.MaxParallelism;
+                        var newMax = Math.Max(1, Math.Min(Account.CoreSize, 12));
+                        if (_semaphoreSlimLock.SetMaxParallelism(newMax))
                         {
-                            // 等待
-                            Thread.Sleep(100);
+                            _logger.Information("频道 {@0} 信号量最大值修改成功，原值：{@1}，当前最大值：{@2}", Account.ChannelId, oldMax, newMax);
                         }
 
-                        // 重新设置信号量
-                        _semaphoreSlimLock = new AsyncParallelLock(Math.Max(1, Math.Min(Account.CoreSize, 12)));
+                        Thread.Sleep(500);
                     }
 
                     while (_queueTasks.TryPeek(out var info))
@@ -331,24 +339,6 @@ namespace Midjourney.Infrastructure.LoadBalancer
                             Thread.Sleep(100);
                         }
                     }
-
-                    //else
-                    //{
-                    //    // 队列为空，退出循环
-                    //    break;
-                    //}
-                    //}
-
-                    //if (_longToken.Token.IsCancellationRequested)
-                    //{
-                    //    // 清理资源（如果需要）
-                    //    break;
-                    //}
-
-                    //// 等待
-                    //Thread.Sleep(100);
-
-
 
                     // 重新设置信号
                     _mre.Reset();
@@ -503,45 +493,32 @@ namespace Midjourney.Infrastructure.LoadBalancer
             {
                 await _semaphoreSlimLock.LockAsync();
 
-                _runningTasks.TryAdd(info, 0);
+                _runningTasks.TryAdd(info.Id, info);
+
+                // 判断当前实例是否可用，尝试最大等待 30s
+                var waitTime = 0;
+                while (!IsAlive)
+                {
+                    // 等待 1s
+                    await Task.Delay(1000);
+
+                    // 计算等待时间
+                    waitTime += 1000;
+                    if (waitTime > 30 * 1000)
+                    {
+                        break;
+                    }
+                }
 
                 // 判断当前实例是否可用
                 if (!IsAlive)
                 {
+                    _logger.Debug("[{@0}] task error, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
+
                     info.Fail("实例不可用");
                     SaveAndNotify(info);
-                    _logger.Debug("[{@0}] task error, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
                     return;
                 }
-
-                // banned 判断
-                // banned 会导致执行中的数量计算不准确问题，暂时不处理
-                //if (!info.IsWhite)
-                //{
-                //    if (!string.IsNullOrWhiteSpace(info.UserId))
-                //    {
-                //        var lockKey = $"banned:lock:{info.UserId}";
-                //        if (_cache.TryGetValue(lockKey, out int lockValue) && lockValue > 0)
-                //        {
-                //            info.Fail("账号已被临时封锁，请勿使用违规词作图");
-                //            SaveAndNotify(info);
-                //            _logger.Debug("[{@0}] task error, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
-                //            return;
-                //        }
-                //    }
-
-                //    if (true)
-                //    {
-                //        var lockKey = $"banned:lock:{info.ClientIp}";
-                //        if (_cache.TryGetValue(lockKey, out int lockValue) && lockValue > 0)
-                //        {
-                //            info.Fail("账号已被临时封锁，请勿使用违规词作图");
-                //            SaveAndNotify(info);
-                //            _logger.Debug("[{@0}] task error, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
-                //            return;
-                //        }
-                //    }
-                //}
 
                 info.Status = TaskStatus.SUBMITTED;
                 info.Progress = "0%";
@@ -552,9 +529,10 @@ namespace Midjourney.Infrastructure.LoadBalancer
                 // 判断当前实例是否可用
                 if (!IsAlive)
                 {
+                    _logger.Debug("[{@0}] task error, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
+
                     info.Fail("实例不可用");
                     SaveAndNotify(info);
-                    _logger.Debug("[{@0}] task error, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
                     return;
                 }
 
@@ -562,9 +540,10 @@ namespace Midjourney.Infrastructure.LoadBalancer
 
                 if (result.Code != ReturnCode.SUCCESS)
                 {
+                    _logger.Debug("[{@0}] task finished, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
+
                     info.Fail(result.Description);
                     SaveAndNotify(info);
-                    _logger.Debug("[{@0}] task finished, id: {@1}, status: {@2}", Account.GetDisplay(), info.Id, info.Status);
                     return;
                 }
 
@@ -595,11 +574,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
                     }
                 }
 
-                // 不随机，直接读消息
                 // 任务完成后，自动读消息
-                // 随机 3 次，如果命中则读消息
-                //if (new Random().Next(0, 3) == 0)
-                //{
                 try
                 {
                     // 成功才都消息
@@ -620,22 +595,22 @@ namespace Midjourney.Infrastructure.LoadBalancer
                 {
                     _logger.Error(ex, "自动读消息异常 {@0} - {@1}", info.InstanceId, info.Id);
                 }
-                //}
-
-                SaveAndNotify(info);
 
                 _logger.Debug("[{AccountDisplay}] task finished, id: {TaskId}, status: {TaskStatus}", Account.GetDisplay(), info.Id, info.Status);
+
+                SaveAndNotify(info);
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "[{AccountDisplay}] task execute error, id: {TaskId}", Account.GetDisplay(), info.Id);
+
                 info.Fail("[Internal Server Error] " + ex.Message);
 
                 SaveAndNotify(info);
             }
             finally
             {
-                _runningTasks.TryRemove(info, out _);
+                _runningTasks.TryRemove(info.Id, out _);
                 _taskFutureMap.TryRemove(info.Id, out _);
 
                 _semaphoreSlimLock.Unlock();
@@ -646,12 +621,12 @@ namespace Midjourney.Infrastructure.LoadBalancer
 
         public void AddRunningTask(TaskInfo task)
         {
-            _runningTasks.TryAdd(task, 0);
+            _runningTasks.TryAdd(task.Id, task);
         }
 
         public void RemoveRunningTask(TaskInfo task)
         {
-            _runningTasks.TryRemove(task, out _);
+            _runningTasks.TryRemove(task.Id, out _);
         }
 
         /// <summary>
@@ -768,7 +743,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
                 // 释放未完成的任务
                 foreach (var runningTask in _runningTasks)
                 {
-                    runningTask.Key.Fail("强制取消"); // 取消任务（假设TaskInfo有Cancel方法）
+                    runningTask.Value.Fail("强制取消"); // 取消任务（假设TaskInfo有Cancel方法）
                 }
 
                 // 清理任务队列
@@ -778,7 +753,7 @@ namespace Midjourney.Infrastructure.LoadBalancer
                 }
 
                 // 释放信号量
-                //_semaphoreSlimLock?.Dispose();
+                _semaphoreSlimLock?.Dispose();
 
                 // 释放信号
                 _mre?.Dispose();
@@ -807,7 +782,6 @@ namespace Midjourney.Infrastructure.LoadBalancer
             {
             }
         }
-
 
         /// <summary>
         /// 绘画
@@ -1261,6 +1235,15 @@ namespace Midjourney.Infrastructure.LoadBalancer
                 }
             }
 
+            // 如果快速模式用完了，且启用自动切换慢速
+            if (Account.FastExhausted && Account.EnableAutoSetRelax == true)
+            {
+                // 移除 prompt 可能的的参数
+                prompt = prompt.Replace("--fast", "").Replace("--relax", "").Replace("--turbo", "");
+
+                prompt += " --relax";
+            }
+
             // 指定生成速度模式
             if (Account.Mode != null)
             {
@@ -1284,15 +1267,6 @@ namespace Midjourney.Infrastructure.LoadBalancer
                     default:
                         break;
                 }
-            }
-
-            // 如果快速模式用完了，则指定慢速
-            if (Account.FastExhausted)
-            {
-                // 移除 prompt 可能的的参数
-                prompt = prompt.Replace("--fast", "").Replace("--relax", "").Replace("--turbo", "");
-
-                prompt += " --relax";
             }
 
             //// 处理转义字符引号等
@@ -1515,7 +1489,6 @@ namespace Midjourney.Infrastructure.LoadBalancer
             var json = botType == EBotType.MID_JOURNEY || prompt.Contains("--niji") ? _paramsMap["shorten"] : _paramsMap["shortenniji"];
             var paramsStr = ReplaceInteractionParams(json, nonce);
 
-
             var obj = JObject.Parse(paramsStr);
             obj["data"]["options"][0]["value"] = prompt;
             paramsStr = obj.ToString();
@@ -1590,19 +1563,24 @@ namespace Midjourney.Infrastructure.LoadBalancer
                 str = str.Replace("$application_id", Constants.NIJI_APPLICATION_ID);
             }
 
-
             return str;
         }
 
+ 
+        /// <summary>
+        /// 上传文件到 Discord 或 文件存储
+        /// </summary>
+        /// <param name="fileName"></param>
+        /// <param name="dataUrl"></param>
+        /// <param name="useDiscordUpload"></param>
+        /// <returns></returns>
         public async Task<Message> UploadAsync(string fileName, DataUrl dataUrl, bool useDiscordUpload = false)
         {
-            // 启用转为云链接
-            if (GlobalConfiguration.Setting.EnableConvertAliyunLink && !useDiscordUpload)
+            // 保存用户上传的 base64 到文件存储
+            if (GlobalConfiguration.Setting.EnableSaveUserUploadBase64 && !useDiscordUpload)
             {
                 try
                 {
-                    //var oss = new AliyunOssStorageService();
-
                     var localPath = $"attachments/{DateTime.Now:yyyyMMdd}/{fileName}";
 
                     var mt = MimeKit.MimeTypes.GetMimeType(Path.GetFileName(localPath));
@@ -1612,20 +1590,11 @@ namespace Midjourney.Infrastructure.LoadBalancer
                     }
 
                     var stream = new MemoryStream(dataUrl.Data);
-                    var res = StorageHelper.Instance.SaveAsync(stream, localPath, dataUrl.MimeType ?? mt);
+                    var res = StorageHelper.Instance?.SaveAsync(stream, localPath, dataUrl.MimeType ?? mt);
                     if (string.IsNullOrWhiteSpace(res?.Url))
                     {
                         throw new Exception("上传图片到加速站点失败");
                     }
-
-                    //// 替换 url
-                    //var customCdn = oss.Options.CustomCdn;
-                    //if (string.IsNullOrWhiteSpace(customCdn))
-                    //{
-                    //    customCdn = oss.Options.Endpoint;
-                    //}
-
-                    //var url = $"{customCdn?.Trim()?.Trim('/')}/{res.Key}";
 
                     var url = res.Url;
 
