@@ -423,18 +423,27 @@ namespace Midjourney.API.Controllers
             var setting = GlobalConfiguration.Setting;
             if (!string.IsNullOrWhiteSpace(describeDTO.Base64))
             {
-                if (!setting.EnableUserCustomUploadBase64)
+                // 判断是否为URL
+                if (Uri.TryCreate(describeDTO.Base64, UriKind.Absolute, out Uri uriResult) 
+                    && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
                 {
-                    return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "禁止上传"));
+                    // 如果是URL，创建包含URL的DataUrl对象
+                    dataUrl = new DataUrl("text/plain", System.Text.Encoding.UTF8.GetBytes(describeDTO.Base64));
                 }
-
-                try
+                else
                 {
-                    dataUrl = DataUrl.Parse(describeDTO.Base64);
-                }
-                catch
-                {
-                    return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64格式错误"));
+                    if (!setting.EnableUserCustomUploadBase64)
+                    {
+                        return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "禁止上传"));
+                    }
+                    try
+                    {
+                        dataUrl = DataUrl.Parse(describeDTO.Base64);
+                    }
+                    catch
+                    {
+                        return Ok(SubmitResultVO.Fail(ReturnCode.VALIDATION_ERROR, "base64格式错误"));
+                    }
                 }
             }
             else if (!string.IsNullOrWhiteSpace(describeDTO.Link))
@@ -454,9 +463,17 @@ namespace Midjourney.API.Controllers
             task.BotType = GetBotType(describeDTO.BotType);
             task.Action = TaskAction.DESCRIBE;
 
-            string taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType) ?? Path.GetExtension(dataUrl.Url)}";
-            task.Description = $"/describe {taskFileName}";
-
+            // 根据输入类型设置不同的描述
+            if (Uri.IsWellFormedUriString(describeDTO.Base64, UriKind.Absolute))
+            {
+                task.Description = $"/describe {describeDTO.Base64}";
+            }
+            else
+            {
+                string taskFileName = $"{task.Id}.{MimeTypeUtils.GuessFileSuffix(dataUrl.MimeType) ?? Path.GetExtension(dataUrl.Url)}";
+                task.Description = $"/describe {taskFileName}";
+            }
+            
             NewTaskDoFilter(task, describeDTO.AccountFilter);
 
             return Ok(_taskService.SubmitDescribe(task, dataUrl));
