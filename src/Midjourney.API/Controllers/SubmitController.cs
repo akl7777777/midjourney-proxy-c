@@ -427,8 +427,11 @@ namespace Midjourney.API.Controllers
                 if (Uri.TryCreate(describeDTO.Base64, UriKind.Absolute, out Uri uriResult) 
                     && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
                 {
-                    // 如果是URL，创建包含URL的DataUrl对象
-                    dataUrl = new DataUrl("text/plain", System.Text.Encoding.UTF8.GetBytes(describeDTO.Base64));
+                    // 强转link
+                    dataUrl = new DataUrl()
+                    {
+                        Url = describeDTO.Base64
+                    };
                 }
                 else
                 {
